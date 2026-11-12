@@ -1,0 +1,12 @@
+# Fichiers compilés
+/bin/
+*.class
+
+# Fichiers temporaires
+*.log
+*.tmp
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+CasseBrique.zip
