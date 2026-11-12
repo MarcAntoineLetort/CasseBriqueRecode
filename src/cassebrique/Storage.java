@@ -9,7 +9,7 @@ import java.io.OutputStream;
 import java.util.Properties;
 
 /**
- * Sauvegarde (records, son coupe) dans un simple fichier : ~/.cassebrique/save.properties.
+ * Sauvegarde (records par niveau, son coupe) dans un simple fichier : ~/.cassebrique/save.properties.
  * Remplace java.util.prefs qui ecrit dans le registre Windows (d'ou l'avertissement "erreur 5").
  */
 final class Storage {
@@ -25,7 +25,7 @@ final class Storage {
             Properties p = new Properties();
             p.load(in);
             g.highScore = parse(p.getProperty("highScore"));
-            for (int i = 0; i < g.levelBest.length; i++) g.levelBest[i] = parse(p.getProperty("best." + i));
+            for (int i = 0; i < g.levelBest.length; i++) g.levelBest[i] = parse(p.getProperty("best." + Levels.get(i).name));
             g.muted = "true".equals(p.getProperty("muted"));
         } catch (IOException e) {
             // pas encore de sauvegarde : valeurs par defaut
@@ -41,7 +41,7 @@ final class Storage {
             if (!dir.exists()) dir.mkdirs();
             Properties p = new Properties();
             p.setProperty("highScore", String.valueOf(g.highScore));
-            for (int i = 0; i < g.levelBest.length; i++) p.setProperty("best." + i, String.valueOf(g.levelBest[i]));
+            for (int i = 0; i < g.levelBest.length; i++) p.setProperty("best." + Levels.get(i).name, String.valueOf(g.levelBest[i]));
             p.setProperty("muted", String.valueOf(g.muted));
             out = new FileOutputStream(FILE);
             p.store(out, "Casse-Brique");

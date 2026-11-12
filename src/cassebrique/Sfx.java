@@ -23,6 +23,8 @@ enum Sfx {
     LIFE_LOST(0.9),   // balle perdue
     LEVEL_CLEAR(0.9), // niveau termine
     GAME_OVER(0.9),   // partie perdue
+    MALUS(0.8),       // malus recupere
+    SHIELD(0.7),      // mur de secours active
     MENU_CLICK(0.6);  // clic dans le menu
 
     final double volume;

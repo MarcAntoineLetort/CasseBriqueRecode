@@ -21,7 +21,8 @@ final class Brick {
      * '1' '2' '3' normale (resistance) | '#' acier | 'X' explosive | 'G' or
      * 'Z' foudre (colonne) | 'R' roche (ligne) | 'B' bouton
      * 'T' brique-interrupteur visible au depart | 't' brique-interrupteur cachee au depart
-     * 'w' 'm' 's' 'f' 'c' '+' : bonus direct (large, multi, ralenti, feu, collante, vie)
+     * 'w' 'm' 's' 'f' 'c' 'u' '+' : bonus direct (large, multi, ralenti, feu, collante, mur, vie)
+     * 'r' 'n' : malus direct (raquette reduite, balle inoffensive)
      */
     Brick(int col, int row, double x, double y, char c) {
         this.col = col;
@@ -47,6 +48,9 @@ final class Brick {
         case 'f': k = Kind.BONUS; b = PowerUp.Type.FIRE; break;
         case 'c': k = Kind.BONUS; b = PowerUp.Type.STICKY; break;
         case '+': k = Kind.BONUS; b = PowerUp.Type.LIFE; break;
+        case 'u': k = Kind.BONUS; b = PowerUp.Type.WALL; break;
+        case 'r': k = Kind.BONUS; b = PowerUp.Type.SHRINK; break;
+        case 'n': k = Kind.BONUS; b = PowerUp.Type.NOBREAK; break;
         default: break;
         }
         this.kind = k;

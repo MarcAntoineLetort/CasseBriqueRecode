@@ -41,29 +41,13 @@ public class Main extends Application {
             game.mouseExited(toLogicalX(canvas, sx));
         });
 
-        scene.setOnKeyPressed(e -> {
-            KeyCode k = e.getCode();
-            if (k == KeyCode.LEFT || k == KeyCode.A || k == KeyCode.Q) game.setLeft(true);
-            else if (k == KeyCode.RIGHT || k == KeyCode.D) game.setRight(true);
-            else if (k == KeyCode.SPACE || k == KeyCode.ENTER) game.action();
-            else if (k == KeyCode.P || k == KeyCode.ESCAPE) game.togglePause();
-            else if (k == KeyCode.M) game.backToMenu();
-            else if (k == KeyCode.S) {
-                game.muted = !game.muted;
-                game.saveDirty = true;
-            } else if (k == KeyCode.F || k == KeyCode.F11) stage.setFullScreen(!stage.isFullScreen());
-        });
-        scene.setOnKeyReleased(e -> {
-            KeyCode k = e.getCode();
-            if (k == KeyCode.LEFT || k == KeyCode.A || k == KeyCode.Q) game.setLeft(false);
-            else if (k == KeyCode.RIGHT || k == KeyCode.D) game.setRight(false);
-        });
+        scene.setOnKeyPressed(e -> onKey(stage, e.getCode(), true));
+        scene.setOnKeyReleased(e -> onKey(stage, e.getCode(), false));
 
         // Pause automatique si la fenetre perd le focus
         stage.focusedProperty().addListener((obs, was, now) -> {
             if (!now) {
-                game.setLeft(false);
-                game.setRight(false);
+                game.clearKeys();
                 game.pauseIfPlaying();
             }
         });
@@ -92,7 +76,9 @@ public class Main extends Application {
                     game.saveDirty = false;
                     Storage.save(game);
                 }
-                boolean hide = game.state == Game.State.PLAYING || game.state == Game.State.READY;
+                // En duel (clavier seul) le curseur reste visible ; en solo il se cache pendant le jeu.
+                boolean hide = !game.twoPlayer
+                        && (game.state == Game.State.PLAYING || game.state == Game.State.READY);
                 if (hide != cursorHidden) {
                     scene.setCursor(hide ? Cursor.NONE : Cursor.DEFAULT);
                     cursorHidden = hide;
@@ -107,6 +93,45 @@ public class Main extends Application {
         stage.setFullScreenExitHint("F11 pour quitter le plein \u00e9cran");
         stage.setScene(scene);
         stage.show();
+    }
+
+    /** Toutes les touches : deplacement (solo ou duel), actions, menu. */
+    private void onKey(Stage stage, KeyCode k, boolean down) {
+        if (game.state == Game.State.MENU) {
+            if (!down) return;
+            if (k == KeyCode.LEFT || k == KeyCode.PAGE_UP) game.changePage(-1);
+            else if (k == KeyCode.RIGHT || k == KeyCode.PAGE_DOWN) game.changePage(1);
+            else if (k == KeyCode.SPACE || k == KeyCode.ENTER) game.action(0);
+            else common(stage, k);
+            return;
+        }
+
+        // Deplacements (relaches pris en compte dans tous les etats)
+        if (game.twoPlayer) {
+            if (k == KeyCode.Z || k == KeyCode.W) game.setMove(0, -1, down);       // blanc : haut
+            else if (k == KeyCode.S) game.setMove(0, 1, down);                      // blanc : bas
+            else if (k == KeyCode.UP) game.setMove(1, -1, down);                    // noir : haut
+            else if (k == KeyCode.DOWN) game.setMove(1, 1, down);                   // noir : bas
+        } else {
+            if (k == KeyCode.LEFT || k == KeyCode.A || k == KeyCode.Q) game.setMove(0, -1, down);
+            else if (k == KeyCode.RIGHT || k == KeyCode.D) game.setMove(0, 1, down);
+        }
+        if (!down) return;
+
+        if (k == KeyCode.SPACE) game.action(1);       // joueur blanc / solo
+        else if (k == KeyCode.ENTER) game.action(2);  // joueur noir / solo
+        else if (k == KeyCode.P || k == KeyCode.ESCAPE) game.togglePause();
+        else if (k == KeyCode.M) game.backToMenu();
+        else common(stage, k);
+    }
+
+    private void common(Stage stage, KeyCode k) {
+        if (k == KeyCode.N) {
+            game.muted = !game.muted;
+            game.saveDirty = true;
+        } else if (k == KeyCode.F || k == KeyCode.F11) {
+            stage.setFullScreen(!stage.isFullScreen());
+        }
     }
 
     @Override

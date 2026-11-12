@@ -18,9 +18,14 @@ final class Renderer {
     private static final Color WHITE = Color.web("#e8ecff");
     private static final Color SOFT = Color.web("#aab4ee");
     private static final Color GOLD = Color.web("#ffd24a");
+    private static final Color INK = Color.web("#14141c");   // "noir" du joueur noir
+    private static final Color PAPER = Color.web("#ffffff"); // "blanc" du joueur blanc
 
     private final LinearGradient bg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
             new Stop(0, Color.web("#10173d")), new Stop(1, Color.web("#04050d")));
+    // Fond gris moyen du duel : le blanc et le noir y ressortent tous les deux
+    private final LinearGradient duelBg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+            new Stop(0, Color.web("#8d92a3")), new Stop(1, Color.web("#686d7f")));
 
     private final Font fTitle = Font.font("System", FontWeight.BOLD, 76);
     private final Font fBig = Font.font("System", FontWeight.BOLD, 44);
@@ -52,9 +57,10 @@ final class Renderer {
         gc.rect(0, 0, Game.W, Game.H);
         gc.clip();
 
-        gc.setFill(bg);
+        boolean duel = g.twoPlayer && g.state != Game.State.MENU;
+        gc.setFill(duel ? duelBg : bg);
         gc.fillRect(0, 0, Game.W, Game.H);
-        drawStars(gc, g.time);
+        if (!duel) drawStars(gc, g.time);
 
         if (g.state == Game.State.MENU) {
             drawMenu(gc, g);
@@ -63,7 +69,7 @@ final class Renderer {
             if (g.shake > 0.1) {
                 gc.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
             }
-            gc.setStroke(Color.web("#33407f"));
+            gc.setStroke(duel ? Color.web("#2a2f45") : Color.web("#33407f"));
             gc.setLineWidth(2);
             gc.strokeLine(0, Game.TOP, Game.W, Game.TOP);
 
@@ -71,9 +77,12 @@ final class Renderer {
                 if (k.alive) drawBrick(gc, k, g.time);
             }
             for (Beam b : g.beams) drawBeam(gc, b);
-            drawPaddle(gc, g);
-            for (PowerUp p : g.powerUps) drawPowerUp(gc, p);
-            for (Ball b : g.balls) drawBall(gc, b, g.fireTimer > 0);
+            for (Paddle p : g.paddles) {
+                if (p.wallTimer > 0) drawWall(gc, g, p);
+            }
+            for (Paddle p : g.paddles) drawPaddle(gc, g, p);
+            for (PowerUp u : g.powerUps) drawPowerUp(gc, u);
+            for (Ball b : g.balls) drawBall(gc, g, b);
             drawParticles(gc, g);
             gc.restore();
 
@@ -103,7 +112,7 @@ final class Renderer {
         case ROCK: return Color.web("#8a6a4a");
         case BUTTON: return Color.web("#4a4f66");
         case PHASE: return Color.web("#3fb8c9");
-        case BONUS: return Color.hsb(k.bonus.hue, 0.8, 0.95);
+        case BONUS: return k.bonus.bad ? Color.web("#3a1018") : Color.hsb(k.bonus.hue, 0.8, 0.95);
         default: return Color.hsb(k.hue(), 0.75, 0.95);
         }
     }
@@ -182,16 +191,19 @@ final class Renderer {
             gc.strokeLine(x + 24, y + h - 7, x + 36, y + 5);
             gc.strokeLine(x + 40, y + h - 7, x + 52, y + 5);
             break;
-        case BONUS:
-            gc.setStroke(Color.rgb(255, 255, 255, 0.45 + 0.35 * Math.sin(t * 5)));
+        case BONUS: {
+            boolean bad = k.bonus.bad;
+            double a = 0.45 + 0.35 * Math.sin(t * 5);
+            gc.setStroke(bad ? Color.rgb(255, 70, 70, 0.5 + 0.4 * Math.sin(t * 6)) : Color.rgb(255, 255, 255, a));
             gc.setLineWidth(2);
             gc.strokeRoundRect(x + 1, y + 1, w - 2, h - 4, 8, 8);
             gc.setTextAlign(TextAlignment.CENTER);
             gc.setTextBaseline(VPos.CENTER);
             gc.setFont(fMed);
-            gc.setFill(Color.web("#10142e"));
+            gc.setFill(bad ? Color.web("#ff7070") : Color.web("#10142e"));
             gc.fillText(k.bonus.label, cx, cy + 1);
             break;
+        }
         default:
             break;
         }
@@ -204,7 +216,7 @@ final class Renderer {
         double[] xs = new double[n + 1], ys = new double[n + 1];
         if (b.vertical) {
             for (int i = 0; i <= n; i++) {
-                ys[i] = Game.TOP + (Game.PADDLE_Y - Game.TOP) * i / n;
+                ys[i] = b.a + (b.b - b.a) * i / n;
                 xs[i] = b.pos + ((i == 0 || i == n) ? 0 : (r.nextDouble() - 0.5) * 22);
             }
             gc.setStroke(Color.rgb(255, 230, 80, a * 0.35));
@@ -215,9 +227,9 @@ final class Renderer {
             gc.strokePolyline(xs, ys, n + 1);
         } else {
             gc.setFill(Color.rgb(160, 115, 70, a * 0.40));
-            gc.fillRect(0, b.pos - Game.BH / 2, Game.W, Game.BH);
+            gc.fillRect(b.a, b.pos - Game.BH / 2, b.b - b.a, Game.BH);
             for (int i = 0; i <= n; i++) {
-                xs[i] = Game.W * i / n;
+                xs[i] = b.a + (b.b - b.a) * i / n;
                 ys[i] = b.pos + ((i == 0 || i == n) ? 0 : (r.nextDouble() - 0.5) * 14);
             }
             gc.setStroke(Color.rgb(70, 45, 28, a));
@@ -226,51 +238,142 @@ final class Renderer {
         }
     }
 
-    private void drawPaddle(GraphicsContext gc, Game g) {
-        double w = g.paddleW, x = g.paddleX - w / 2, y = Game.PADDLE_Y, h = Game.PADDLE_H;
-        boolean fire = g.fireTimer > 0;
-        boolean sticky = g.stickyTimer > 0;
-        gc.setFill(fire ? Color.rgb(255, 150, 60, 0.20) : Color.rgb(90, 160, 255, 0.18));
-        gc.fillRoundRect(x - 6, y - 6, w + 12, h + 12, 20, 20);
-        gc.setFill(fire ? Color.web("#c9722f") : Color.web("#4f7fd6"));
-        gc.fillRoundRect(x, y + 2, w, h, 12, 12);
-        gc.setFill(fire ? Color.web("#ffb060") : Color.web("#9cc2ff"));
-        gc.fillRoundRect(x, y, w, h - 2, 12, 12);
-        gc.setFill(Color.rgb(255, 255, 255, 0.35));
-        gc.fillRoundRect(x + 6, y + 2, w - 12, 4, 4, 4);
-        if (sticky) { // dessus gluant
-            gc.setFill(Color.hsb(60, 0.8, 1, 0.9));
-            gc.fillRoundRect(x + 2, y - 3, w - 4, 5, 5, 5);
+    /** Mur de secours derriere la raquette. */
+    private void drawWall(GraphicsContext gc, Game g, Paddle p) {
+        double wf = p.wallFace();
+        double a0 = Math.min(wf, wf + p.toward * 6);
+        double alpha = p.wallTimer < 2 ? 0.5 + 0.5 * Math.sin(g.time * 24) : 1.0; // clignote avant de disparaitre
+        Color glow = Color.hsb(300, 0.6, 1, 0.25 * alpha);
+        Color core = Color.hsb(300, 0.5, 1, 0.9 * alpha);
+        if (p.vertical) {
+            gc.setFill(glow);
+            gc.fillRect(a0 - 5, Game.TOP, 16, Game.H - Game.TOP);
+            gc.setFill(core);
+            gc.fillRect(a0, Game.TOP, 6, Game.H - Game.TOP);
+        } else {
+            gc.setFill(glow);
+            gc.fillRect(0, a0 - 5, Game.W, 16);
+            gc.setFill(core);
+            gc.fillRect(0, a0, Game.W, 6);
         }
     }
 
-    private void drawBall(GraphicsContext gc, Ball b, boolean fire) {
+    private void drawPaddle(GraphicsContext gc, Game g, Paddle p) {
+        double x = p.rectX(), y = p.rectY(), w = p.rectW(), h = p.rectH();
+        double arc = Paddle.T;
+        boolean fire = p.fireTimer > 0;
+        Color glow, body, light, edge;
+        if (g.twoPlayer) {
+            if (p.index == 0) { // blanc
+                glow = Color.rgb(255, 255, 255, 0.30);
+                body = PAPER;
+                light = Color.rgb(120, 120, 140, 0.35);
+                edge = INK;
+            } else {            // noir
+                glow = Color.rgb(0, 0, 0, 0.28);
+                body = INK;
+                light = Color.rgb(255, 255, 255, 0.25);
+                edge = Color.web("#f4f4fb");
+            }
+        } else {
+            glow = fire ? Color.rgb(255, 150, 60, 0.20) : Color.rgb(90, 160, 255, 0.18);
+            body = fire ? Color.web("#ffb060") : Color.web("#9cc2ff");
+            light = Color.rgb(255, 255, 255, 0.35);
+            edge = fire ? Color.web("#c9722f") : Color.web("#4f7fd6");
+        }
+        gc.setFill(glow);
+        gc.fillRoundRect(x - 6, y - 6, w + 12, h + 12, arc + 6, arc + 6);
+        gc.setFill(edge);
+        gc.fillRoundRect(x - 2, y - 2, w + 4, h + 4, arc + 2, arc + 2);
+        gc.setFill(body);
+        gc.fillRoundRect(x, y, w, h, arc, arc);
+        gc.setFill(light);
+        if (p.vertical) gc.fillRoundRect(x + 3, y + 6, 4, h - 12, 4, 4);
+        else gc.fillRoundRect(x + 6, y + 3, w - 12, 4, 4, 4);
+
+        if (fire && g.twoPlayer) { // lisere orange
+            gc.setStroke(Color.web("#ff9a3c"));
+            gc.setLineWidth(2);
+            gc.strokeRoundRect(x - 3, y - 3, w + 6, h + 6, arc + 3, arc + 3);
+        }
+        if (p.shrinkTimer > 0) { // malus : contour rouge qui pulse
+            gc.setStroke(Color.rgb(255, 50, 50, 0.55 + 0.4 * Math.sin(g.time * 10)));
+            gc.setLineWidth(3);
+            gc.strokeRoundRect(x - 4, y - 4, w + 8, h + 8, arc + 4, arc + 4);
+        }
+        if (p.stickyTimer > 0) { // face gluante
+            double s0 = p.toward > 0 ? p.face - 3 : p.face - 2;
+            gc.setFill(Color.hsb(60, 0.8, 1, 0.95));
+            if (p.vertical) gc.fillRoundRect(s0, y + 2, 5, h - 4, 5, 5);
+            else gc.fillRoundRect(x + 2, s0, w - 4, 5, 5, 5);
+        }
+    }
+
+    private void drawBall(GraphicsContext gc, Game g, Ball b) {
+        Paddle o = g.paddles[Math.min(b.owner, g.paddles.length - 1)];
+        boolean fire = o.fireTimer > 0;
+        boolean soft = o.nobreakTimer > 0;
+        boolean duel = g.twoPlayer;
+        boolean black = duel && b.owner == 1;
+
+        Color trail, glow, body, ring = null;
+        if (soft) {
+            trail = Color.rgb(140, 147, 168, 1);
+            glow = Color.rgb(255, 60, 60, 0.18);
+            body = Color.web("#8c93a8");
+            ring = Color.rgb(255, 60, 60, 0.6 + 0.4 * Math.sin(g.time * 12));
+        } else if (fire) {
+            trail = Color.rgb(255, 140, 40, 1);
+            glow = Color.rgb(255, 120, 30, 0.18);
+            body = Color.web("#ffd27a");
+        } else if (duel) {
+            trail = black ? Color.rgb(20, 20, 28, 1) : Color.rgb(255, 255, 255, 1);
+            glow = black ? Color.rgb(0, 0, 0, 0.18) : Color.rgb(255, 255, 255, 0.28);
+            body = black ? INK : PAPER;
+            ring = black ? Color.web("#f4f4fb") : INK;
+        } else {
+            trail = Color.rgb(150, 200, 255, 1);
+            glow = Color.rgb(170, 210, 255, 0.15);
+            body = Color.WHITE;
+        }
+
         int n = b.trailSize();
         for (int i = 0; i < n; i++) {
             double f = (i + 1) / (double) n;
             double r = Game.BALL_R * (0.35 + 0.65 * f);
-            gc.setFill(fire ? Color.rgb(255, 140, 40, f * 0.35) : Color.rgb(150, 200, 255, f * 0.30));
+            gc.setFill(Color.color(trail.getRed(), trail.getGreen(), trail.getBlue(), f * 0.32));
             gc.fillOval(b.trailX(i) - r, b.trailY(i) - r, r * 2, r * 2);
         }
         double r = Game.BALL_R;
-        gc.setFill(fire ? Color.rgb(255, 120, 30, 0.18) : Color.rgb(170, 210, 255, 0.15));
+        gc.setFill(glow);
         gc.fillOval(b.x - r * 2.2, b.y - r * 2.2, r * 4.4, r * 4.4);
-        gc.setFill(fire ? Color.web("#ffd27a") : Color.WHITE);
+        if (ring != null) {
+            gc.setFill(ring);
+            gc.fillOval(b.x - r - 2, b.y - r - 2, r * 2 + 4, r * 2 + 4);
+        }
+        gc.setFill(body);
         gc.fillOval(b.x - r, b.y - r, r * 2, r * 2);
     }
 
-    private void drawPowerUp(GraphicsContext gc, PowerUp p) {
-        double bob = Math.sin(p.t * 8) * 1.5;
-        Color c = Color.hsb(p.type.hue, 0.8, 0.95);
+    private void drawPowerUp(GraphicsContext gc, PowerUp u) {
+        double bob = Math.sin(u.t * 8) * 1.5;
         gc.setFill(Color.rgb(255, 255, 255, 0.12));
-        gc.fillRoundRect(p.x - 21, p.y - 15 + bob, 42, 30, 30, 30);
-        gc.setFill(c);
-        gc.fillRoundRect(p.x - 16, p.y - 10 + bob, 32, 20, 20, 20);
+        gc.fillRoundRect(u.x - 21, u.y - 15 + bob, 42, 30, 30, 30);
+        if (u.type.bad) { // malus : fond sombre, contour rouge
+            gc.setFill(Color.web("#3a1018"));
+            gc.fillRoundRect(u.x - 16, u.y - 10 + bob, 32, 20, 20, 20);
+            gc.setStroke(Color.rgb(255, 70, 70, 0.7 + 0.3 * Math.sin(u.t * 10)));
+            gc.setLineWidth(2);
+            gc.strokeRoundRect(u.x - 16, u.y - 10 + bob, 32, 20, 20, 20);
+        } else {
+            gc.setFill(Color.hsb(u.type.hue, 0.8, 0.95));
+            gc.fillRoundRect(u.x - 16, u.y - 10 + bob, 32, 20, 20, 20);
+        }
         gc.setTextAlign(TextAlignment.CENTER);
         gc.setTextBaseline(VPos.CENTER);
         gc.setFont(fTiny);
-        gc.setFill(Color.web("#10142e"));
-        gc.fillText(p.type.label, p.x, p.y + bob + 1);
+        gc.setFill(u.type.bad ? Color.web("#ff7070") : Color.web("#10142e"));
+        gc.fillText(u.type.label, u.x, u.y + bob + 1);
     }
 
     private void drawParticles(GraphicsContext gc, Game g) {
@@ -289,16 +392,49 @@ final class Renderer {
 
     private void drawHud(GraphicsContext gc, Game g) {
         gc.setTextBaseline(VPos.CENTER);
+        if (g.twoPlayer) drawHudDuel(gc, g);
+        else drawHudSolo(gc, g);
+
+        // Compteur d'or et son coupe
+        gc.setTextAlign(TextAlignment.RIGHT);
+        if (g.goldTotal > 0) {
+            gc.setFont(fMed);
+            gc.setFill(g.twoPlayer ? Color.web("#fff0a0") : GOLD);
+            String t = "OR  " + (g.goldTotal - g.goldRemaining) + " / " + g.goldTotal;
+            if (g.twoPlayer) {
+                gc.setTextAlign(TextAlignment.CENTER);
+                strokeText(gc, t, Game.W / 2, Game.H - 14);
+            } else {
+                gc.fillText(t, Game.W - 20, Game.H - 14);
+            }
+        }
+        if (g.muted) {
+            gc.setTextAlign(TextAlignment.RIGHT);
+            gc.setFont(fTiny);
+            gc.setFill(Color.web("#8a94c8"));
+            gc.fillText("SON COUP\u00c9 (N)", Game.W - 20, 49);
+        }
+    }
+
+    /** Texte avec lisere sombre : lisible sur le fond gris du duel. */
+    private void strokeText(GraphicsContext gc, String t, double x, double y) {
+        gc.setStroke(Color.rgb(20, 22, 40, 0.9));
+        gc.setLineWidth(3);
+        gc.strokeText(t, x, y);
+        gc.fillText(t, x, y);
+    }
+
+    private void drawHudSolo(GraphicsContext gc, Game g) {
         gc.setTextAlign(TextAlignment.LEFT);
         gc.setFont(fHud);
         gc.setFill(WHITE);
-        gc.fillText("SCORE  " + g.score, 20, 20);
+        gc.fillText("SCORE  " + g.score(), 20, 20);
         gc.setFont(fTiny);
         gc.setFill(Color.web("#8a94c8"));
-        long best = g.campaign ? g.highScore : g.levelBest[g.level];
+        int best = g.campaign ? g.highScore : g.levelBest[g.level];
         gc.fillText("RECORD  " + best, 20, 42);
 
-        int m = g.multiplier();
+        int m = g.multiplier(0);
         if (m > 1) {
             gc.setFont(fHud);
             gc.setFill(Color.hsb(50, 0.9, 1));
@@ -308,7 +444,7 @@ final class Renderer {
         gc.setTextAlign(TextAlignment.CENTER);
         gc.setFont(fSmall);
         gc.setFill(SOFT);
-        gc.fillText("NIVEAU " + (g.level + 1) + "  -  " + Levels.NAMES[g.level], Game.W / 2, 28);
+        gc.fillText("NIVEAU " + (g.level + 1) + "  -  " + Levels.get(g.level).name, Game.W / 2, 28);
 
         for (int i = 0; i < g.lives; i++) {
             double x = Game.W - 30 - i * 24;
@@ -318,37 +454,72 @@ final class Renderer {
             gc.fillOval(x - 7, 21, 14, 14);
         }
 
-        double y = Game.H - 14;
-        y = timerBar(gc, "LARGE", g.wideTimer, 12, 20, y, 140);
-        y = timerBar(gc, "RALENTI", g.slowTimer, 8, 20, y, 270);
-        y = timerBar(gc, "COLLANT", g.stickyTimer, 15, 20, y, 60);
-        timerBar(gc, "FEU", g.fireTimer, 6, 20, y, 25);
+        double y = timers(gc, g.paddles[0], 20, Game.H - 14);
+        timerBar(gc, "RALENTI", g.slowTimer, 8, 20, y, 270, 0.8);
+    }
 
-        gc.setTextAlign(TextAlignment.RIGHT);
-        double ry = Game.H - 14;
-        if (g.goldTotal > 0) {
-            gc.setFont(fMed);
-            gc.setFill(GOLD);
-            gc.fillText("OR  " + (g.goldTotal - g.goldRemaining) + " / " + g.goldTotal, Game.W - 20, ry);
-            ry -= 24;
-        }
-        if (g.muted) {
-            gc.setFont(fTiny);
-            gc.setFill(Color.web("#8a94c8"));
-            gc.fillText("SON COUP\u00c9 (S)", Game.W - 20, ry);
+    private void drawHudDuel(GraphicsContext gc, Game g) {
+        gc.setFill(Color.rgb(10, 12, 30, 0.80)); // bandeau sombre derriere les scores
+        gc.fillRect(0, 0, Game.W, Game.TOP);
+
+        pill(gc, g, 0, 20, "BLANC");
+        pill(gc, g, 1, Game.W - 20 - 200, "NOIR");
+
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setFont(fSmall);
+        gc.setFill(SOFT);
+        gc.fillText("NIVEAU " + (g.level + 1) + "  -  " + Levels.get(g.level).name, Game.W / 2, 20);
+        gc.setFont(fTiny);
+        gc.setFill(Color.web("#8a94c8"));
+        gc.fillText("DUEL", Game.W / 2, 40);
+
+        timers(gc, g.paddles[0], 20, Game.H - 14);
+        timers(gc, g.paddles[1], Game.W - 20 - 192, Game.H - 14);
+        timerBar(gc, "RALENTI", g.slowTimer, 8, Game.W / 2 - 96, Game.H - 40, 270, 0.8);
+    }
+
+    private void pill(GraphicsContext gc, Game g, int player, double x, String name) {
+        boolean white = player == 0;
+        gc.setFill(white ? PAPER : INK);
+        gc.fillRoundRect(x, 12, 200, 32, 16, 16);
+        gc.setStroke(white ? INK : Color.web("#f4f4fb"));
+        gc.setLineWidth(2);
+        gc.strokeRoundRect(x, 12, 200, 32, 16, 16);
+        gc.setTextAlign(TextAlignment.LEFT);
+        gc.setFont(fHud);
+        gc.setFill(white ? INK : PAPER);
+        gc.fillText(name + "  " + g.paddles[player].score, x + 14, 29);
+        int m = g.multiplier(player);
+        if (m > 1) {
+            gc.setFont(fHud);
+            gc.setFill(Color.hsb(50, 0.9, 1));
+            gc.setTextAlign(white ? TextAlignment.LEFT : TextAlignment.RIGHT);
+            gc.fillText("x" + m, white ? x + 210 : x - 10, 29);
         }
     }
 
-    private double timerBar(GraphicsContext gc, String label, double t, double max, double x, double y, double hue) {
+    /** Barres de duree des effets d'une raquette ; renvoie le y suivant disponible. */
+    private double timers(GraphicsContext gc, Paddle p, double x, double y) {
+        y = timerBar(gc, "LARGE", p.wideTimer, 12, x, y, 140, 0.8);
+        y = timerBar(gc, "PETIT", p.shrinkTimer, 10, x, y, 0, 0.9);
+        y = timerBar(gc, "COLLANT", p.stickyTimer, 15, x, y, 60, 0.8);
+        y = timerBar(gc, "FEU", p.fireTimer, 6, x, y, 25, 0.8);
+        y = timerBar(gc, "MUR", p.wallTimer, 8, x, y, 300, 0.6);
+        y = timerBar(gc, "INOFFENSIF", p.nobreakTimer, 5, x, y, 0, 0.9);
+        return y;
+    }
+
+    private double timerBar(GraphicsContext gc, String label, double t, double max, double x, double y,
+            double hue, double sat) {
         if (t <= 0) return y;
         gc.setTextAlign(TextAlignment.LEFT);
         gc.setFont(fTiny);
-        gc.setFill(Color.hsb(hue, 0.6, 1));
+        gc.setFill(Color.hsb(hue, 0.5, 1));
         gc.fillText(label, x, y);
         gc.setFill(Color.rgb(255, 255, 255, 0.15));
-        gc.fillRoundRect(x + 70, y - 4, 100, 8, 8, 8);
-        gc.setFill(Color.hsb(hue, 0.8, 1));
-        gc.fillRoundRect(x + 70, y - 4, 100 * Math.min(1, t / max), 8, 8, 8);
+        gc.fillRoundRect(x + 92, y - 4, 100, 8, 8, 8);
+        gc.setFill(Color.hsb(hue, sat, 1));
+        gc.fillRoundRect(x + 92, y - 4, 100 * Math.min(1, t / max), 8, 8, 8);
         return y - 20;
     }
 
@@ -364,39 +535,81 @@ final class Renderer {
         gc.setLineWidth(2);
         gc.strokeRoundRect(Game.CAMP_X, Game.CAMP_Y, Game.CAMP_W, Game.CAMP_H, 14, 14);
         center(gc, "CAMPAGNE  (ESPACE)", Game.CAMP_Y + 18, fMed, WHITE);
-        center(gc, "niveaux encha\u00een\u00e9s - record : " + g.highScore, Game.CAMP_Y + 38, fTiny, GOLD);
+        center(gc, "niveaux solo encha\u00een\u00e9s - record : " + g.highScore, Game.CAMP_Y + 38, fTiny, GOLD);
 
         center(gc, "ou choisissez directement un niveau", 195, fSmall, SOFT);
 
-        for (int i = 0; i < Levels.NAMES.length; i++) {
-            double cx = Game.cardX(i), cy = Game.cardY(i);
+        int first = g.menuPage * Game.PER_PAGE;
+        for (int local = 0; local < Game.PER_PAGE && first + local < Levels.count(); local++) {
+            int i = first + local;
+            Levels.Level lv = Levels.get(i);
+            double cx = Game.cardX(local), cy = Game.cardY(local);
             boolean hover = g.hoverCard == i;
-            double hu = (200 + i * 29) % 360;
-            gc.setFill(Color.hsb(hu, 0.5, 0.9, hover ? 0.38 : 0.16));
+            double hu = lv.twoPlayer ? 0 : (200 + i * 29) % 360;
+            double sat = lv.twoPlayer ? 0.0 : 0.5; // les duels sont en gris/blanc
+            gc.setFill(Color.hsb(hu, sat, 0.9, hover ? 0.38 : 0.16));
             gc.fillRoundRect(cx, cy, Game.CARD_W, Game.CARD_H, 12, 12);
-            gc.setStroke(Color.hsb(hu, 0.5, 1, hover ? 1.0 : 0.55));
+            gc.setStroke(Color.hsb(hu, sat, 1, hover ? 1.0 : 0.55));
             gc.setLineWidth(hover ? 3 : 2);
             gc.strokeRoundRect(cx, cy, Game.CARD_W, Game.CARD_H, 12, 12);
 
             gc.setTextAlign(TextAlignment.LEFT);
             gc.setTextBaseline(VPos.CENTER);
             gc.setFont(fTiny);
-            gc.setFill(Color.hsb(hu, 0.4, 1));
+            gc.setFill(Color.hsb(hu, sat * 0.8, 1));
             gc.fillText("NIVEAU " + (i + 1), cx + 14, cy + 18);
+            if (lv.twoPlayer) {
+                gc.setFill(PAPER);
+                gc.fillRoundRect(cx + Game.CARD_W - 92, cy + 9, 80, 18, 9, 9);
+                gc.setFill(INK);
+                gc.setTextAlign(TextAlignment.CENTER);
+                gc.fillText("2 JOUEURS", cx + Game.CARD_W - 52, cy + 18);
+                gc.setTextAlign(TextAlignment.LEFT);
+            }
             gc.setFont(fMed);
             gc.setFill(WHITE);
-            gc.fillText(Levels.NAMES[i], cx + 14, cy + 42);
+            gc.fillText(lv.name, cx + 14, cy + 42);
             gc.setFont(fTiny);
-            gc.setFill(g.levelBest[i] > 0 ? GOLD : Color.web("#6a74a8"));
-            gc.fillText("Meilleur : " + (g.levelBest[i] > 0 ? String.valueOf(g.levelBest[i]) : "-"), cx + 14, cy + 64);
+            if (lv.twoPlayer) {
+                gc.setFill(Color.web("#9aa3d0"));
+                gc.fillText("Blanc contre Noir", cx + 14, cy + 64);
+            } else {
+                gc.setFill(g.levelBest[i] > 0 ? GOLD : Color.web("#6a74a8"));
+                gc.fillText("Meilleur : " + (g.levelBest[i] > 0 ? String.valueOf(g.levelBest[i]) : "-"), cx + 14, cy + 64);
+            }
         }
 
-        center(gc, "Souris ou fl\u00e8ches / Q-D : raquette   |   Clic / ESPACE : lancer   |   P : pause   |   S : son   |   F11 : plein \u00e9cran",
-                520, fTiny, SOFT);
-        center(gc, "Bonus : L = large   M = multi-balles   S = ralenti   F = feu   C = collante   + = vie", 542, fTiny, SOFT);
-        center(gc, "Les briques bonus (lettre) activent leur bonus d\u00e8s qu'on les touche", 564, fTiny, SOFT);
+        if (g.pageCount() > 1) {
+            arrow(gc, "<", Game.PREV_X, g.menuPage > 0, g.hoverPrev);
+            arrow(gc, ">", Game.NEXT_X, g.menuPage < g.pageCount() - 1, g.hoverNext);
+            center(gc, "Page " + (g.menuPage + 1) + " / " + g.pageCount(), Game.PAGE_Y + Game.PAGE_H / 2, fSmall, SOFT);
+        }
+
+        center(gc, "Souris ou fl\u00e8ches / Q-D : raquette   |   Clic / ESPACE : lancer   |   P : pause   |   N : son   |   F11 : plein \u00e9cran",
+                530, fTiny, SOFT);
+        center(gc, "Bonus : L = large   M = multi-balles   S = ralenti   F = feu   C = collante   = = mur de secours   + = vie",
+                548, fTiny, SOFT);
+        center(gc, "Malus (fond sombre) : - = raquette r\u00e9duite   \u00d7 = balle inoffensive   |   Les briques-lettres agissent d\u00e8s qu'on les touche",
+                566, fTiny, SOFT);
         center(gc, "\u00c9clair = colonne   Roche = ligne   Or = niveau fini quand tout l'or est pris   Bouton = fait basculer les briques cyan",
-                586, fTiny, SOFT);
+                584, fTiny, SOFT);
+        center(gc, "Duel : Blanc (gauche) Z/S + ESPACE   |   Noir (droite) fl\u00e8ches haut/bas + ENTR\u00c9E   |   balle rat\u00e9e = points perdus",
+                602, fTiny, SOFT);
+        center(gc, "Menu : fl\u00e8ches gauche/droite ou boutons pour changer de page", 620, fTiny, Color.web("#7a84b8"));
+    }
+
+    private void arrow(GraphicsContext gc, String label, double x, boolean enabled, boolean hover) {
+        double a = enabled ? (hover ? 0.4 : 0.18) : 0.06;
+        gc.setFill(Color.rgb(120, 170, 255, a));
+        gc.fillRoundRect(x, Game.PAGE_Y, Game.PAGE_W, Game.PAGE_H, 10, 10);
+        gc.setStroke(Color.rgb(160, 190, 255, enabled ? (hover ? 1.0 : 0.6) : 0.2));
+        gc.setLineWidth(2);
+        gc.strokeRoundRect(x, Game.PAGE_Y, Game.PAGE_W, Game.PAGE_H, 10, 10);
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setTextBaseline(VPos.CENTER);
+        gc.setFont(fMed);
+        gc.setFill(enabled ? WHITE : Color.web("#4a5280"));
+        gc.fillText(label, x + Game.PAGE_W / 2, Game.PAGE_Y + Game.PAGE_H / 2);
     }
 
     // ------------------------------------------------------------------ ecrans
@@ -425,14 +638,24 @@ final class Renderer {
             if (g.stateTime < 1.8) {
                 double a = Math.min(1, (1.8 - g.stateTime));
                 center(gc, "NIVEAU " + (g.level + 1), 400, fBig, Color.color(1, 1, 1, a));
-                center(gc, Levels.NAMES[g.level], 445, fMed, Color.color(0.67, 0.71, 0.93, a));
+                center(gc, Levels.get(g.level).name, 445, fMed, Color.color(0.67, 0.71, 0.93, a));
             }
-            center(gc, "Clic / ESPACE pour lancer", Game.PADDLE_Y - 60, fSmall, blink(g, SOFT));
+            if (g.twoPlayer) {
+                boolean white = g.server == 0;
+                String who = white ? "BLANC sert : ESPACE" : "NOIR sert : ENTR\u00c9E";
+                Color c = white ? PAPER : INK;
+                gc.setFill(Color.rgb(white ? 20 : 240, white ? 22 : 240, white ? 40 : 250, 0.8));
+                gc.fillRoundRect(Game.W / 2 - 150, Game.H - 86, 300, 34, 17, 17);
+                center(gc, who, Game.H - 69, fMed, blink(g, c));
+            } else {
+                center(gc, "Clic / ESPACE pour lancer", Game.PADDLE_Y - 60, fSmall, blink(g, SOFT));
+            }
             break;
         case PLAYING:
             for (Ball b : g.balls) {
                 if (b.stuck) {
-                    center(gc, "Clic / ESPACE pour relancer", Game.PADDLE_Y - 60, fSmall, blink(g, SOFT));
+                    String t = g.twoPlayer ? "ESPACE (blanc) / ENTR\u00c9E (noir) pour relancer" : "Clic / ESPACE pour relancer";
+                    center(gc, t, g.twoPlayer ? Game.H - 69 : Game.PADDLE_Y - 60, fSmall, blink(g, g.twoPlayer ? WHITE : SOFT));
                     break;
                 }
             }
@@ -444,24 +667,31 @@ final class Renderer {
             center(gc, "M : retour au menu", 365, fSmall, SOFT);
             break;
         case LEVEL_CLEAR:
-            dim(gc, 0.45);
+            dim(gc, 0.55);
+            if (g.twoPlayer) {
+                String title = g.winner == 0 ? "BLANC GAGNE !" : (g.winner == 1 ? "NOIR GAGNE !" : "\u00c9GALIT\u00c9 !");
+                center(gc, title, 250, fBig, Color.hsb(50, 0.5, 1));
+                center(gc, "Blanc : " + g.paddles[0].score + "     Noir : " + g.paddles[1].score, 315, fHud, WHITE);
+                center(gc, "ESPACE pour revenir au menu", 390, fSmall, blink(g, SOFT));
+                break;
+            }
             center(gc, g.endedByGold ? "TOUT L'OR EST RAMASS\u00c9 !" : "NIVEAU TERMIN\u00c9 !", 250, fBig, Color.hsb(140, 0.6, 1));
             center(gc, "Bonus vies : +" + g.levelBonus, 305, fMed, WHITE);
-            center(gc, "Score : " + g.score, 340, fMed, WHITE);
+            center(gc, "Score : " + g.score(), 340, fMed, WHITE);
             if (g.newRecord) center(gc, "Nouveau record !", 375, fMed, Color.hsb(50, 0.8, 1));
             center(gc, g.campaign ? "ESPACE pour le niveau suivant" : "ESPACE pour revenir au menu", 420, fSmall, blink(g, SOFT));
             break;
         case GAME_OVER:
             dim(gc, 0.7);
             center(gc, "PARTIE TERMIN\u00c9E", 240, fBig, Color.hsb(5, 0.7, 1));
-            center(gc, "Score : " + g.score, 305, fHud, WHITE);
+            center(gc, "Score : " + g.score(), 305, fHud, WHITE);
             if (g.newRecord) center(gc, "Nouveau record !", 345, fMed, Color.hsb(50, 0.8, 1));
             center(gc, "ESPACE pour revenir au menu", 410, fSmall, blink(g, SOFT));
             break;
         case WIN:
             dim(gc, 0.6);
             center(gc, "VICTOIRE !", 230, fTitle, Color.hsb(hue(g.time * 80), 0.7, 1));
-            center(gc, "Score final : " + g.score, 310, fHud, WHITE);
+            center(gc, "Score final : " + g.score(), 310, fHud, WHITE);
             if (g.newRecord) center(gc, "Nouveau record !", 350, fMed, Color.hsb(50, 0.8, 1));
             center(gc, "ESPACE pour revenir au menu", 420, fSmall, blink(g, SOFT));
             break;
