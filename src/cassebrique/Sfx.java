@@ -38,6 +38,7 @@ enum Sfx {
     TALLY(0.6),        // tableau des scores : une ligne apparait
     TOTAL(0.9),        // tableau des scores : total
     RECORD(0.9),       // nouveau record / victoire
+    ELIMINATION(1.0),  // duel : un joueur n'a plus de balles (defaite)
     MENU_CLICK(0.6);   // clic dans le menu
 
     final double volume;

@@ -15,15 +15,14 @@ final class Renderer {
     private final LinearGradient bg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
             new Stop(0, Color.web("#10173d")), new Stop(1, Color.web("#04050d")));
 
-    // Fond du duel : bleu ardoise assez moyen pour que le blanc et le noir ressortent tous les deux
+    // Fond du duel : ciel etoile (comme le solo) un peu plus clair, avec des nebuleuses colorees qui derivent
     private final LinearGradient duelBg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
-            new Stop(0, Color.web("#3f6290")), new Stop(1, Color.web("#1f3252")));
-    private final RadialGradient duelGlow = new RadialGradient(0, 0, 0.5, 0.5, 0.75, true, CycleMethod.NO_CYCLE,
-            new Stop(0, Color.rgb(255, 255, 255, 0.18)), new Stop(1, Color.rgb(255, 255, 255, 0)));
+            new Stop(0, Color.web("#25398a")), new Stop(1, Color.web("#0d1334")));
     private final LinearGradient duelLeft = new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE,
-            new Stop(0, Color.rgb(255, 255, 255, 0.26)), new Stop(1, Color.rgb(255, 255, 255, 0)));
+            new Stop(0, Color.rgb(255, 255, 255, 0.22)), new Stop(1, Color.rgb(255, 255, 255, 0)));
     private final LinearGradient duelRight = new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE,
-            new Stop(0, Color.rgb(0, 0, 0, 0)), new Stop(1, Color.rgb(0, 0, 0, 0.42)));
+            new Stop(0, Color.rgb(20, 0, 50, 0)), new Stop(1, Color.rgb(20, 0, 50, 0.50)));
+    private final double[] star2X = new double[70], star2Y = new double[70], star2S = new double[70];
 
     private final double[] starX = new double[90], starY = new double[90], starS = new double[90];
 
@@ -33,6 +32,12 @@ final class Renderer {
             starX[i] = r.nextDouble() * Game.W;
             starY[i] = r.nextDouble() * Game.H;
             starS[i] = 0.5 + r.nextDouble() * 1.5;
+        }
+        Random r2 = new Random(7);
+        for (int i = 0; i < star2X.length; i++) {
+            star2X[i] = r2.nextDouble() * Game.W;
+            star2Y[i] = r2.nextDouble() * Game.H;
+            star2S[i] = 1.2 + r2.nextDouble() * 2.2;
         }
     }
 
@@ -50,7 +55,7 @@ final class Renderer {
 
         boolean duel = g.twoPlayer && g.state != Game.State.MENU && g.state != Game.State.INFO;
         if (duel) {
-            drawDuelBackground(gc);
+            drawDuelBackground(gc, g.time);
         } else {
             gc.setFill(bg);
             gc.fillRect(0, 0, Game.W, Game.H);
@@ -65,8 +70,11 @@ final class Renderer {
             InfoScreen.draw(gc, g, g.time);
             break;
         case RESULTS:
+            gc.save();
+            if (g.shake > 0.1) gc.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
             drawResults(gc, g);
             drawParticles(gc, g);
+            gc.restore();
             break;
         default:
             drawPlay(gc, g, duel);
@@ -86,22 +94,47 @@ final class Renderer {
         }
     }
 
-    private void drawDuelBackground(GraphicsContext gc) {
+    private void blob(GraphicsContext gc, double cx, double cy, double r, Color c) {
+        gc.setFill(new RadialGradient(0, 0, cx, cy, r, false, CycleMethod.NO_CYCLE,
+                new Stop(0, c), new Stop(1, Color.color(c.getRed(), c.getGreen(), c.getBlue(), 0))));
+        gc.fillOval(cx - r, cy - r, 2 * r, 2 * r);
+    }
+
+    private void drawDuelBackground(GraphicsContext gc, double t) {
         gc.setFill(duelBg);
         gc.fillRect(0, 0, Game.W, Game.H);
-        gc.setFill(duelGlow);
-        gc.fillRect(0, 0, Game.W, Game.H);
-        gc.setStroke(Color.rgb(255, 255, 255, 0.05));
-        gc.setLineWidth(1);
-        for (double x = 0; x <= Game.W; x += 40) gc.strokeLine(x, Game.TOP, x, Game.H);
-        for (double y = Game.TOP; y <= Game.H; y += 40) gc.strokeLine(0, y, Game.W, y);
+        // nebuleuses qui derivent lentement
+        blob(gc, Game.W * 0.25 + Math.sin(t * 0.15) * 70, Game.H * 0.45 + Math.cos(t * 0.11) * 45, 330, Color.rgb(90, 150, 255, 0.32));
+        blob(gc, Game.W * 0.75 + Math.cos(t * 0.13) * 70, Game.H * 0.55 + Math.sin(t * 0.17) * 45, 330, Color.rgb(200, 90, 255, 0.28));
+        blob(gc, Game.W * 0.5, Game.H * 0.5 + Math.sin(t * 0.2) * 35, 430, Color.rgb(60, 210, 230, 0.12));
+        // etoiles : meme ciel que le solo, plus une couche de grosses etoiles plus rapides
+        drawStars(gc, t);
+        for (int i = 0; i < star2X.length; i++) {
+            double y = (star2Y[i] + t * 18 * star2S[i]) % Game.H;
+            double a = 0.35 + 0.55 * Math.abs(Math.sin(t * star2S[i] * 1.3 + i));
+            gc.setFill(i % 3 == 0 ? Color.rgb(160, 200, 255, a) : Color.rgb(255, 255, 255, a));
+            gc.fillOval(star2X[i], y, star2S[i], star2S[i]);
+        }
+        // etoile filante de temps en temps
+        double cyc = t / 7.0;
+        double ph = (cyc - Math.floor(cyc)) * 10; // 0..1 : le trait ; ensuite pause
+        if (ph < 1) {
+            Random r = new Random((long) Math.floor(cyc) * 31 + 7);
+            double sx = 100 + r.nextDouble() * 760, sy = Game.TOP + 20 + r.nextDouble() * 220;
+            for (int i = 0; i < 12; i++) {
+                double f = ph - i * 0.02;
+                if (f < 0) continue;
+                gc.setFill(Color.rgb(255, 255, 255, (1 - ph) * (1 - i / 12.0)));
+                gc.fillOval(sx + f * 280 - 2, sy + f * 170 - 2, 4 - i * 0.2, 4 - i * 0.2);
+            }
+        }
         gc.setFill(duelLeft);   // camp du joueur blanc : lumiere
-        gc.fillRect(0, Game.TOP, 160, Game.H - Game.TOP);
-        gc.setFill(duelRight);  // camp du joueur noir : ombre
-        gc.fillRect(Game.W - 160, Game.TOP, 160, Game.H - Game.TOP);
-        gc.setStroke(Color.rgb(255, 255, 255, 0.2));
+        gc.fillRect(0, Game.TOP, 170, Game.H - Game.TOP);
+        gc.setFill(duelRight);  // camp du joueur noir : ombre violette
+        gc.fillRect(Game.W - 170, Game.TOP, 170, Game.H - Game.TOP);
+        gc.setStroke(Color.rgb(255, 255, 255, 0.14));
         gc.setLineWidth(2);
-        gc.setLineDashes(10, 10);
+        gc.setLineDashes(10, 14);
         gc.strokeLine(Game.W / 2, Game.TOP, Game.W / 2, Game.H);
         gc.setLineDashes((double[]) null);
     }
@@ -143,7 +176,7 @@ final class Renderer {
 
     /** Nuit : tout est noir sauf raquettes, balles, effets et briques qui viennent de disparaitre. */
     private void drawNight(GraphicsContext gc, Game g) {
-        double elapsed = Game.NIGHT_TIME - g.nightTimer;
+        double elapsed = Rules.NIGHT_TIME - g.nightTimer;
         double a = 0.97 * Math.min(1, elapsed / 0.4) * Math.min(1, g.nightTimer / 0.8);
         gc.setFill(Color.rgb(0, 0, 4, a));
         gc.fillRect(-20, -20, Game.W + 40, Game.H + 40);
@@ -215,7 +248,7 @@ final class Renderer {
                 light = Color.rgb(120, 120, 140, 0.35);
                 edge = Theme.INK;
             } else {            // noir
-                glow = Color.rgb(0, 0, 0, 0.30);
+                glow = Color.rgb(255, 255, 255, 0.30); // halo clair : le noir ressort sur le fond sombre
                 body = Theme.INK;
                 light = Color.rgb(255, 255, 255, 0.25);
                 edge = Color.web("#f4f4fb");
@@ -228,8 +261,9 @@ final class Renderer {
         }
         gc.setFill(glow);
         gc.fillRoundRect(x - 6, y - 6, w + 12, h + 12, arc + 6, arc + 6);
+        double ep = g.twoPlayer ? 3 : 2;
         gc.setFill(edge);
-        gc.fillRoundRect(x - 2, y - 2, w + 4, h + 4, arc + 2, arc + 2);
+        gc.fillRoundRect(x - ep, y - ep, w + 2 * ep, h + 2 * ep, arc + ep, arc + ep);
         gc.setFill(body);
         gc.fillRoundRect(x, y, w, h, arc, arc);
         gc.setFill(light);
@@ -286,8 +320,8 @@ final class Renderer {
             body = Color.web("#ffd27a");
             if (duel) ring = black ? Color.web("#f4f4fb") : Theme.INK;
         } else if (duel) {
-            trail = black ? Color.rgb(20, 20, 28, 1) : Color.rgb(255, 255, 255, 1);
-            glow = black ? Color.rgb(0, 0, 0, 0.22) : Color.rgb(255, 255, 255, 0.30);
+            trail = black ? Color.rgb(150, 130, 255, 1) : Color.rgb(255, 255, 255, 1);
+            glow = black ? Color.rgb(200, 190, 255, 0.28) : Color.rgb(255, 255, 255, 0.30);
             body = black ? Theme.INK : Theme.PAPER;
             ring = black ? Color.web("#f4f4fb") : Theme.INK;
         } else {
@@ -393,7 +427,7 @@ final class Renderer {
         }
 
         double y = timers(gc, p, 20, Game.H - 14);
-        timerBar(gc, "RALENTI", g.slowTimer, 8, 20, y, 270, 0.8);
+        timerBar(gc, "RALENTI", g.slowTimer, Rules.SLOW_TIME, 20, y, 270, 0.8);
     }
 
     /** En duel les scores restent caches jusqu'au tableau final ; on ne voit que les balles restantes. */
@@ -408,7 +442,7 @@ final class Renderer {
 
         timers(gc, g.paddles[0], 20, Game.H - 14);
         timers(gc, g.paddles[1], Game.W - 20 - 192, Game.H - 14);
-        timerBar(gc, "RALENTI", g.slowTimer, 8, Game.W / 2 - 96, Game.H - 40, 270, 0.8);
+        timerBar(gc, "RALENTI", g.slowTimer, Rules.SLOW_TIME, Game.W / 2 - 96, Game.H - 40, 270, 0.8);
     }
 
     private void pill(GraphicsContext gc, Game g, int player, double x, String name) {
@@ -429,14 +463,14 @@ final class Renderer {
 
     /** Barres de duree des effets d'une raquette ; renvoie le y suivant disponible. */
     private double timers(GraphicsContext gc, Paddle p, double x, double y) {
-        y = timerBar(gc, "LARGE", p.wideTimer, 12, x, y, 140, 0.8);
-        y = timerBar(gc, "PETIT", p.shrinkTimer, 10, x, y, 0, 0.9);
-        y = timerBar(gc, "COLLANT", p.stickyTimer, 15, x, y, 60, 0.8);
-        y = timerBar(gc, "FEU", p.fireTimer, 6, x, y, 25, 0.8);
-        y = timerBar(gc, "MUR", p.wallTimer, 8, x, y, 300, 0.6);
-        y = timerBar(gc, "FANT\u00d4MES", p.ghostTimer, 5, x, y, 150, 0.6);
-        y = timerBar(gc, "\u00c9TOILE", p.starTimer, 8, x, y, 45, 0.8);
-        y = timerBar(gc, "INOFFENSIF", p.nobreakTimer, 5, x, y, 0, 0.9);
+        y = timerBar(gc, "LARGE", p.wideTimer, Rules.WIDE_TIME, x, y, 140, 0.8);
+        y = timerBar(gc, "PETIT", p.shrinkTimer, Rules.SHRINK_TIME, x, y, 0, 0.9);
+        y = timerBar(gc, "COLLANT", p.stickyTimer, Rules.STICKY_TIME, x, y, 60, 0.8);
+        y = timerBar(gc, "FEU", p.fireTimer, Rules.FIRE_TIME, x, y, 25, 0.8);
+        y = timerBar(gc, "MUR", p.wallTimer, Rules.WALL_TIME, x, y, 300, 0.6);
+        y = timerBar(gc, "FANT\u00d4MES", p.ghostTimer, Rules.GHOST_TIME, x, y, 150, 0.6);
+        y = timerBar(gc, "\u00c9TOILE", p.starTimer, Rules.STAR_TIME, x, y, 45, 0.8);
+        y = timerBar(gc, "INOFFENSIF", p.nobreakTimer, Rules.NOBREAK_TIME, x, y, 0, 0.9);
         return y;
     }
 
@@ -576,7 +610,7 @@ final class Renderer {
             for (Paddle p : g.paddles) {
                 double hx = p.index == 0 ? Game.W * 0.27 : Game.W * 0.73;
                 if (p.serveTimer <= 0 && hasStuck(g, p)) {
-                    Theme.center(gc, p.index == 0 ? "ESPACE : lancer" : "ENTR\u00c9E : lancer", hx, Game.H / 2 + 100,
+                    Theme.center(gc, p.index == 0 ? "ESPACE : relancer" : "ENTR\u00c9E : relancer", hx, Game.H / 2 + 100,
                             Theme.MED, blink(g, Color.WHITE));
                 } else if (p.starTimer > 0 && p.serveTimer <= 0) {
                     Theme.center(gc, p.index == 0 ? "ESPACE : \u00e9toile filante" : "ENTR\u00c9E : \u00e9toile filante", hx,
@@ -648,13 +682,13 @@ final class Renderer {
             Theme.center(gc, "NOIR (droite)", 660, 229, Theme.SMALL_BOLD, Theme.PAPER);
             Theme.left(gc, "Monter : Z (ou W)", 160, 272, Theme.SMALL, Theme.WHITE);
             Theme.left(gc, "Descendre : S", 160, 298, Theme.SMALL, Theme.WHITE);
-            Theme.left(gc, "Lancer / \u00e9toile : ESPACE", 160, 324, Theme.SMALL, Theme.WHITE);
+            Theme.left(gc, "Relancer / \u00e9toile : ESPACE", 160, 324, Theme.SMALL, Theme.WHITE);
             Theme.left(gc, "Monter : fl\u00e8che haut", 520, 272, Theme.SMALL, Theme.WHITE);
             Theme.left(gc, "Descendre : fl\u00e8che bas", 520, 298, Theme.SMALL, Theme.WHITE);
-            Theme.left(gc, "Lancer / \u00e9toile : ENTR\u00c9E", 520, 324, Theme.SMALL, Theme.WHITE);
-            Theme.center(gc, "Chacun a sa balle et 3 vies.", Game.W / 2, 378, Theme.SMALL_BOLD, Theme.WHITE);
+            Theme.left(gc, "Relancer / \u00e9toile : ENTR\u00c9E", 520, 324, Theme.SMALL, Theme.WHITE);
+            Theme.center(gc, "Chacun a sa balle et " + Rules.LIVES + " vies ; elle part toute seule apr\u00e8s le d\u00e9compte.", Game.W / 2, 378, Theme.SMALL_BOLD, Theme.WHITE);
             Theme.center(gc, "Balle sortie de votre c\u00f4t\u00e9 : une vie en moins.", Game.W / 2, 402, Theme.SMALL, Theme.SOFT);
-            Theme.center(gc, "Balle sortie du c\u00f4t\u00e9 adverse : l'adversaire perd 100 points.", Game.W / 2, 424, Theme.SMALL, Theme.SOFT);
+            Theme.center(gc, "Balle sortie du c\u00f4t\u00e9 adverse : l'adversaire perd " + Rules.DUEL_PENALTY + " points.", Game.W / 2, 424, Theme.SMALL, Theme.SOFT);
         }
         Theme.center(gc, "P ou \u00c9chap : reprendre     M : menu     N : son     F11 : plein \u00e9cran", Game.W / 2, 480,
                 Theme.SMALL_BOLD, Theme.WHITE);
@@ -754,8 +788,45 @@ final class Renderer {
             }
         }
 
-        if (!g.resFinalShown) Theme.center(gc, "ESPACE : passer", Game.W / 2, 612, Theme.SMALL, Theme.DIM);
+        if (!g.resultsAllShown()) Theme.center(gc, "ESPACE : passer", Game.W / 2, 612, Theme.SMALL, Theme.DIM);
         else Theme.center(gc, "ESPACE : continuer", Game.W / 2, 612, Theme.SMALL, blink(g, Theme.SOFT));
+
+        if (g.resElimShown) drawElimination(gc, g);
+    }
+
+    /** Duel : "X n'a plus de balles" - arrive en dernier, avec flash rouge, zoom et secousse. */
+    private void drawElimination(GraphicsContext gc, Game g) {
+        double age = g.stateTime - g.resultsElimTime();
+        double zoom = 1 + 2.4 * (1 - ease(age / 0.4));
+        double flash = Math.max(0, 1 - age / 0.6);
+        gc.setFill(Color.rgb(255, 0, 20, 0.40 * flash));
+        gc.fillRect(-20, -20, Game.W + 40, Game.H + 40);
+        gc.setFill(Color.rgb(70, 0, 10, 0.94));
+        gc.fillRect(-20, 262, Game.W + 40, 160);
+        double pulse = 0.5 + 0.5 * Math.sin(g.time * 9);
+        gc.setStroke(Color.rgb(255, 70, 70, 0.6 + 0.4 * pulse));
+        gc.setLineWidth(4);
+        gc.strokeLine(-20, 262, Game.W + 20, 262);
+        gc.strokeLine(-20, 422, Game.W + 20, 422);
+
+        int m = g.eliminatedMask;
+        String text = m == 1 ? "BLANC N'A PLUS DE BALLES !" : (m == 2 ? "NOIR N'A PLUS DE BALLES !" : "PLUS DE BALLES POUR LES DEUX !");
+        gc.save();
+        gc.translate(Game.W / 2, 332);
+        gc.scale(zoom, zoom);
+        Theme.center(gc, text, 0, 0, Theme.BIG, Color.WHITE);
+        gc.restore();
+
+        String sub;
+        if (m == 3) {
+            sub = "Plus de balles pour personne : le plus de points l'emporte";
+        } else {
+            int loser = m == 1 ? 0 : 1;
+            boolean morePoints = g.paddles[loser].score > g.paddles[1 - loser].score;
+            sub = morePoints ? "D\u00e9faite ! Sans balle on perd, m\u00eame avec plus de points" : "D\u00e9faite : plus aucune balle";
+        }
+        double a = ease((age - 0.3) / 0.4);
+        Theme.center(gc, sub, Game.W / 2, 388, Theme.MED, Color.rgb(255, 205, 205, a));
     }
 
     private void value(GraphicsContext gc, int finalVal, double prog, double x, double y, TextAlignment a) {

@@ -23,13 +23,7 @@ final class Game {
     static final double KEY_SPEED = 780;
     static final double MOVER_SPEED = 70;
 
-    // Points
-    static final int DUEL_PENALTY = 100;    // l'adversaire perd ces points quand ma balle sort de son cote
-    static final int BALL_BONUS = 150;      // par balle restante a la fin (un peu plus que la penalite)
-    static final int LAST_GOLD_BONUS = 200; // derniere brique d'or prise
-    static final int CATCH_BONUS = 50;      // bonus ramasse
-    static final double SERVE_DELAY = 3, RESPAWN_DELAY = 2;
-    static final double NIGHT_TIME = 8;
+    // Les points, le multiplicateur, les vies et les durees des effets sont dans Rules.java
 
     // Lignes du tableau des scores
     static final int CAT_BALL = 0, CAT_SPECIAL = 1, CAT_GOLD = 2, CAT_LASTGOLD = 3,
@@ -83,7 +77,8 @@ final class Game {
     // Ecran de resultats
     String resultTitle = "", resultNote = "";
     int resLines, resRevealed;
-    boolean resTotalShown, resFinalShown;
+    boolean resTotalShown, resFinalShown, resElimShown;
+    int eliminatedMask;         // duel : 1 = blanc n'a plus de balles, 2 = noir, 3 = les deux
 
     // Records / options (sauvegardes par Storage)
     int highScore;
@@ -115,7 +110,7 @@ final class Game {
     }
 
     int multiplier(int player) {
-        return Math.min(8, 1 + paddles[player].combo / 4);
+        return Math.min(Rules.MAX_MULTIPLIER, 1 + paddles[player].combo / Rules.COMBO_STEP);
     }
 
     int pageCount() {
@@ -213,8 +208,8 @@ final class Game {
             if (stateTime > 0.4) loadLevel(Levels.nextSolo(level), true);
             break;
         case RESULTS:
-            if (!resFinalShown) skipResults();
-            else if (stateTime > resultsEnd() + 0.3) goMenu();
+            if (!resultsAllShown()) skipResults();
+            else if (stateTime > resultsAllEnd() + 0.3) goMenu();
             break;
         default:
             break;
@@ -394,6 +389,7 @@ final class Game {
         }
         goldRemaining = goldTotal;
         endedByGold = false;
+        eliminatedMask = 0;
 
         if (twoPlayer) {
             double mid = (TOP + H) / 2;
@@ -419,8 +415,8 @@ final class Game {
         if (twoPlayer) { // les deux joueurs ont leur balle, decompte de 3 secondes avant de pouvoir la lancer
             for (Paddle p : paddles) {
                 spawnStuckBall(p);
-                p.serveTimer = SERVE_DELAY;
-                p.serveSecond = (int) Math.ceil(SERVE_DELAY);
+                p.serveTimer = Rules.SERVE_DELAY;
+                p.serveSecond = (int) Math.ceil(Rules.SERVE_DELAY);
             }
             play(Sfx.COUNTDOWN);
             state = State.PLAYING;
@@ -474,6 +470,15 @@ final class Game {
         state = State.PLAYING;
     }
 
+    /** Duel : a la fin du decompte, la balle du joueur part vers l'adversaire. */
+    private void autoLaunch(Paddle p) {
+        for (Ball b : balls) {
+            if (!b.stuck || b.owner != p.index) continue;
+            b.stuck = false;
+            setDir(b, p, (rnd.nextDouble() - 0.5) * 0.5);
+        }
+    }
+
     /** Relance les balles collees ou en attente de service (only = joueur concerne, -1 = tous). */
     private boolean releaseStuck(int only) {
         boolean any = false;
@@ -521,7 +526,7 @@ final class Game {
         spawn(b.lostSide == 0 ? 12 : W - 12, ey, 18, 5, 260);
         if (b.lostSide != b.owner) { // sortie chez l'adversaire : c'est lui qui perd des points
             Paddle victim = paddles[b.lostSide];
-            victim.award(CAT_PENALTY, -DUEL_PENALTY);
+            victim.award(CAT_PENALTY, -Rules.DUEL_PENALTY);
             victim.combo = 0;
             shake = Math.max(shake, 8);
             play(Sfx.PENALTY);
@@ -541,9 +546,10 @@ final class Game {
         if (e0 && !e1) winner = 1;
         else if (e1 && !e0) winner = 0;
         else winner = paddles[0].score > paddles[1].score ? 0 : (paddles[1].score > paddles[0].score ? 1 : -1);
-        for (Paddle p : paddles) p.award(CAT_BALLS_LEFT, p.lives * BALL_BONUS);
+        eliminatedMask = (e0 ? 1 : 0) | (e1 ? 2 : 0);
+        for (Paddle p : paddles) p.award(CAT_BALLS_LEFT, p.lives * Rules.BALL_BONUS);
         play(Sfx.GAME_OVER);
-        endRun("R\u00c9SULTATS", winner < 0 ? "" : (winner == 0 ? "Noir" : "Blanc") + " n'a plus de balles");
+        endRun("R\u00c9SULTATS", ""); // le motif de la defaite n'est revele qu'a la fin du tableau
     }
 
     /** Niveau fini : s'il y a de l'or, il suffit de l'avoir tout ramasse. */
@@ -557,14 +563,14 @@ final class Game {
         powerUps.clear();
         ghosts.clear();
         stars.clear();
-        for (Paddle p : paddles) p.award(CAT_BALLS_LEFT, p.lives * BALL_BONUS);
+        for (Paddle p : paddles) p.award(CAT_BALLS_LEFT, p.lives * Rules.BALL_BONUS);
         play(Sfx.LEVEL_CLEAR);
         if (twoPlayer) {
             int a = paddles[0].score, b = paddles[1].score;
             winner = a > b ? 0 : (b > a ? 1 : -1);
             endRun("R\u00c9SULTATS", endedByGold ? "Tout l'or est ramass\u00e9" : "Toutes les briques sont cass\u00e9es");
         } else {
-            levelBonus = paddles[0].lives * BALL_BONUS;
+            levelBonus = paddles[0].lives * Rules.BALL_BONUS;
             if (campaign && Levels.nextSolo(level) >= 0) {
                 for (int i = 0; i < 6; i++) {
                     spawn(80 + rnd.nextDouble() * (W - 160), 120 + rnd.nextDouble() * 200, 25, rnd.nextDouble() * 360, 260);
@@ -589,6 +595,7 @@ final class Game {
         resRevealed = 0;
         resTotalShown = false;
         resFinalShown = false;
+        resElimShown = false;
         resLines = twoPlayer ? Paddle.CATS : Paddle.CATS - 1;
         balls.clear();
         powerUps.clear();
@@ -606,8 +613,21 @@ final class Game {
         return resultsTotalTime() + 1.4;
     }
 
+    /** Duel : le message "n'a plus de balles" arrive apres le gagnant, avec un gros effet. */
+    double resultsElimTime() {
+        return resultsEnd() + 1.7;
+    }
+
+    double resultsAllEnd() {
+        return eliminatedMask != 0 ? resultsElimTime() : resultsEnd();
+    }
+
+    boolean resultsAllShown() {
+        return resFinalShown && (eliminatedMask == 0 || resElimShown);
+    }
+
     private void skipResults() {
-        stateTime = resultsEnd() + 0.01;
+        stateTime = resultsAllEnd() + 0.01;
     }
 
     private void tickResults() {
@@ -630,6 +650,13 @@ final class Game {
                 play(Sfx.RECORD);
                 confetti(60);
             }
+        }
+        if (!resElimShown && eliminatedMask != 0 && stateTime >= resultsElimTime()) {
+            resElimShown = true;
+            play(Sfx.ELIMINATION);
+            shake = 22;
+            spawn(W / 2, 340, 70, 0, 460);
+            spawn(W / 2, 340, 40, 20, 380);
         }
     }
 
@@ -705,8 +732,8 @@ final class Game {
                     for (Paddle p : paddles) {
                         if (!hasBall(p) && p.lives > 0) { // nouvelle balle pour celui qui n'en a plus
                             spawnStuckBall(p);
-                            p.serveTimer = RESPAWN_DELAY;
-                            p.serveSecond = (int) Math.ceil(RESPAWN_DELAY);
+                            p.serveTimer = Rules.RESPAWN_DELAY;
+                            p.serveSecond = (int) Math.ceil(Rules.RESPAWN_DELAY);
                         }
                     }
                 }
@@ -742,6 +769,7 @@ final class Game {
             int sec = (int) Math.ceil(p.serveTimer);
             if (p.serveTimer <= 0) {
                 play(Sfx.GO);
+                autoLaunch(p); // la balle part toute seule : impossible de la garder pour les points
             } else if (sec != p.serveSecond) {
                 play(Sfx.COUNTDOWN);
             }
@@ -998,7 +1026,7 @@ final class Game {
         if (k.hp <= 0) {
             destroy(k, direct);
         } else {
-            scorer.award(direct && k.kind == Brick.Kind.NORMAL ? CAT_BALL : CAT_SPECIAL, 2 * multiplier(scorer.index));
+            scorer.award(direct && k.kind == Brick.Kind.NORMAL ? CAT_BALL : CAT_SPECIAL, Rules.DAMAGE_POINTS * multiplier(scorer.index));
             k.flash = 0.15;
             spawn(k.x + k.w / 2, k.y + k.h / 2, 5, k.hue(), 160);
             play(Sfx.BRICK_HIT);
@@ -1029,10 +1057,10 @@ final class Game {
         int cat, points;
         if (k.kind == Brick.Kind.GOLD) {
             cat = CAT_GOLD;
-            points = 150;
+            points = Rules.GOLD_POINTS;
         } else {
             cat = (direct && k.kind == Brick.Kind.NORMAL) ? CAT_BALL : CAT_SPECIAL;
-            points = 10 * k.maxHp;
+            points = Rules.BRICK_POINTS * k.maxHp;
         }
         scorer.award(cat, points * multiplier(scorer.index));
         spawn(cx, cy, k.kind == Brick.Kind.GOLD ? 22 : 14, k.hue(), 240);
@@ -1041,7 +1069,7 @@ final class Game {
         if (k.kind == Brick.Kind.GOLD) {
             goldRemaining--;
             if (goldRemaining == 0 && goldTotal > 0) { // derniere brique d'or : gros bonus
-                scorer.award(CAT_LASTGOLD, LAST_GOLD_BONUS);
+                scorer.award(CAT_LASTGOLD, Rules.lastGold(twoPlayer));
                 spawn(cx, cy, 40, 48, 360);
                 shake = Math.max(shake, 6);
                 play(Sfx.TOTAL);
@@ -1065,14 +1093,14 @@ final class Game {
             rewind();
             break;
         case NIGHT:
-            nightTimer = NIGHT_TIME;
+            nightTimer = Rules.NIGHT_TIME;
             play(Sfx.NIGHT);
             break;
         case BONUS:
             apply(k.bonus, scorer); // effet immediat, rien ne tombe
             break;
         case NORMAL:
-            if (rnd.nextDouble() < 0.14) dropPowerUp(k);
+            if (rnd.nextDouble() < Rules.DROP_CHANCE) dropPowerUp(k);
             break;
         default:
             break;
@@ -1119,7 +1147,7 @@ final class Game {
         shake = Math.max(shake, 3);
         for (Brick o : bricks) {
             if (o != k && o.alive && !o.indestructible() && Math.abs(o.col - k.col) <= 1 && Math.abs(o.row - k.row) <= 1) {
-                o.frost = 10;
+                o.frost = Rules.FROST_TIME;
                 o.flash = 0.3;
                 spawn(o.x + o.w / 2, o.y + o.h / 2, 6, 195, 140);
             }
@@ -1422,15 +1450,15 @@ final class Game {
     }
 
     private void apply(PowerUp.Type type, Paddle p) {
-        if (!type.bad) p.award(CAT_BONUS, CATCH_BONUS);
+        if (!type.bad) p.award(CAT_BONUS, Rules.CATCH_BONUS);
         spawn(p.vertical ? p.face : p.pos, p.vertical ? p.pos : p.face, 16, type.hue, 220);
         play(type.bad ? Sfx.MALUS : (type == PowerUp.Type.WALL ? Sfx.SHIELD : Sfx.POWERUP));
         switch (type) {
         case WIDE:
-            p.wideTimer = 12;
+            p.wideTimer = Rules.WIDE_TIME;
             break;
         case SHRINK:
-            p.shrinkTimer = 10;
+            p.shrinkTimer = Rules.SHRINK_TIME;
             break;
         case MULTI:
             List<Ball> extra = new ArrayList<Ball>();
@@ -1452,29 +1480,29 @@ final class Game {
             balls.addAll(extra);
             break;
         case SLOW:
-            slowTimer = 8;
+            slowTimer = Rules.SLOW_TIME;
             break;
         case FIRE:
-            p.fireTimer = 6;
+            p.fireTimer = Rules.FIRE_TIME;
             break;
         case STICKY:
-            p.stickyTimer = 15;
+            p.stickyTimer = Rules.STICKY_TIME;
             break;
         case WALL:
-            p.wallTimer = 8;
+            p.wallTimer = Rules.WALL_TIME;
             break;
         case NOBREAK:
-            p.nobreakTimer = 5;
+            p.nobreakTimer = Rules.NOBREAK_TIME;
             break;
         case GHOSTS:
-            p.ghostTimer = 5;
+            p.ghostTimer = Rules.GHOST_TIME;
             p.ghostNext = 0;
             break;
         case STAR:
-            p.starTimer = 8;
+            p.starTimer = Rules.STAR_TIME;
             break;
         case LIFE:
-            p.lives = Math.min(6, p.lives + 1);
+            p.lives = Math.min(Rules.MAX_LIVES, p.lives + 1);
             break;
         }
     }

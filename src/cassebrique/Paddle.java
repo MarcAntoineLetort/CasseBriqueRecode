@@ -18,7 +18,7 @@ final class Paddle {
     final double baseLen;
 
     double pos, len, targetLen, vel;
-    int lives = 3;        // balles restantes
+    int lives = Rules.LIVES; // balles restantes
     int score, combo;
     final int[] pts = new int[CATS]; // points par categorie (tableau final)
     boolean keyNeg, keyPos;          // gauche/haut et droite/bas

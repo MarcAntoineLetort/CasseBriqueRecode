@@ -51,6 +51,21 @@ final class Theme {
         text(gc, s, x, y, f, c, TextAlignment.CENTER);
     }
 
+    /** Texte a gauche, comprime si besoin pour ne pas depasser maxW. */
+    static void leftFit(GraphicsContext gc, String s, double x, double y, Font f, Color c, double maxW) {
+        gc.setTextAlign(TextAlignment.LEFT);
+        gc.setTextBaseline(VPos.CENTER);
+        gc.setFont(f);
+        gc.setFill(c);
+        gc.fillText(s, x, y, maxW);
+    }
+
+    /** Comme lines(), chaque ligne etant comprimee si elle depasse maxW (rien n'est jamais rogne). */
+    static void lines(GraphicsContext gc, String s, double x, double y, double step, Font f, Color c, double maxW) {
+        String[] parts = s.split("\n");
+        for (int i = 0; i < parts.length; i++) leftFit(gc, parts[i], x, y + i * step, f, c, maxW);
+    }
+
     /** Texte sur plusieurs lignes (separees par \n), aligne a gauche. */
     static void lines(GraphicsContext gc, String s, double x, double y, double step, Font f, Color c) {
         String[] parts = s.split("\n");
