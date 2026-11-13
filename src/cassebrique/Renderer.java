@@ -2,37 +2,28 @@ package cassebrique;
 
 import java.util.Random;
 
-import javafx.geometry.VPos;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
 import javafx.scene.paint.CycleMethod;
 import javafx.scene.paint.LinearGradient;
+import javafx.scene.paint.RadialGradient;
 import javafx.scene.paint.Stop;
-import javafx.scene.text.Font;
-import javafx.scene.text.FontWeight;
 import javafx.scene.text.TextAlignment;
 
 /** Dessin du jeu. Travaille dans le repere logique 960x640, mis a l'echelle de la fenetre. */
 final class Renderer {
-    private static final Color OUTSIDE = Color.web("#04050d");
-    private static final Color WHITE = Color.web("#e8ecff");
-    private static final Color SOFT = Color.web("#aab4ee");
-    private static final Color GOLD = Color.web("#ffd24a");
-    private static final Color INK = Color.web("#14141c");   // "noir" du joueur noir
-    private static final Color PAPER = Color.web("#ffffff"); // "blanc" du joueur blanc
-
     private final LinearGradient bg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
             new Stop(0, Color.web("#10173d")), new Stop(1, Color.web("#04050d")));
-    // Fond gris moyen du duel : le blanc et le noir y ressortent tous les deux
-    private final LinearGradient duelBg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
-            new Stop(0, Color.web("#8d92a3")), new Stop(1, Color.web("#686d7f")));
 
-    private final Font fTitle = Font.font("System", FontWeight.BOLD, 76);
-    private final Font fBig = Font.font("System", FontWeight.BOLD, 44);
-    private final Font fHud = Font.font("System", FontWeight.BOLD, 22);
-    private final Font fMed = Font.font("System", FontWeight.BOLD, 20);
-    private final Font fSmall = Font.font("System", FontWeight.NORMAL, 16);
-    private final Font fTiny = Font.font("System", FontWeight.BOLD, 13);
+    // Fond du duel : bleu ardoise assez moyen pour que le blanc et le noir ressortent tous les deux
+    private final LinearGradient duelBg = new LinearGradient(0, 0, 0, 1, true, CycleMethod.NO_CYCLE,
+            new Stop(0, Color.web("#3f6290")), new Stop(1, Color.web("#1f3252")));
+    private final RadialGradient duelGlow = new RadialGradient(0, 0, 0.5, 0.5, 0.75, true, CycleMethod.NO_CYCLE,
+            new Stop(0, Color.rgb(255, 255, 255, 0.18)), new Stop(1, Color.rgb(255, 255, 255, 0)));
+    private final LinearGradient duelLeft = new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE,
+            new Stop(0, Color.rgb(255, 255, 255, 0.26)), new Stop(1, Color.rgb(255, 255, 255, 0)));
+    private final LinearGradient duelRight = new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE,
+            new Stop(0, Color.rgb(0, 0, 0, 0)), new Stop(1, Color.rgb(0, 0, 0, 0.42)));
 
     private final double[] starX = new double[90], starY = new double[90], starS = new double[90];
 
@@ -46,7 +37,7 @@ final class Renderer {
     }
 
     void render(GraphicsContext gc, Game g, double w, double h) {
-        gc.setFill(OUTSIDE);
+        gc.setFill(Theme.OUTSIDE);
         gc.fillRect(0, 0, w, h);
 
         double s = Math.min(w / Game.W, h / Game.H);
@@ -57,42 +48,34 @@ final class Renderer {
         gc.rect(0, 0, Game.W, Game.H);
         gc.clip();
 
-        boolean duel = g.twoPlayer && g.state != Game.State.MENU;
-        gc.setFill(duel ? duelBg : bg);
-        gc.fillRect(0, 0, Game.W, Game.H);
-        if (!duel) drawStars(gc, g.time);
-
-        if (g.state == Game.State.MENU) {
-            drawMenu(gc, g);
+        boolean duel = g.twoPlayer && g.state != Game.State.MENU && g.state != Game.State.INFO;
+        if (duel) {
+            drawDuelBackground(gc);
         } else {
-            gc.save();
-            if (g.shake > 0.1) {
-                gc.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
-            }
-            gc.setStroke(duel ? Color.web("#2a2f45") : Color.web("#33407f"));
-            gc.setLineWidth(2);
-            gc.strokeLine(0, Game.TOP, Game.W, Game.TOP);
+            gc.setFill(bg);
+            gc.fillRect(0, 0, Game.W, Game.H);
+            drawStars(gc, g.time);
+        }
 
-            for (Brick k : g.bricks) {
-                if (k.alive) drawBrick(gc, k, g.time);
-            }
-            for (Beam b : g.beams) drawBeam(gc, b);
-            for (Paddle p : g.paddles) {
-                if (p.wallTimer > 0) drawWall(gc, g, p);
-            }
-            for (Paddle p : g.paddles) drawPaddle(gc, g, p);
-            for (PowerUp u : g.powerUps) drawPowerUp(gc, u);
-            for (Ball b : g.balls) drawBall(gc, g, b);
+        switch (g.state) {
+        case MENU:
+            drawMenu(gc, g);
+            break;
+        case INFO:
+            InfoScreen.draw(gc, g, g.time);
+            break;
+        case RESULTS:
+            drawResults(gc, g);
             drawParticles(gc, g);
-            gc.restore();
-
-            drawHud(gc, g);
-            drawOverlay(gc, g);
+            break;
+        default:
+            drawPlay(gc, g, duel);
+            break;
         }
         gc.restore();
     }
 
-    // ------------------------------------------------------------------ decor
+    // ------------------------------------------------------------------ fonds
 
     private void drawStars(GraphicsContext gc, double t) {
         for (int i = 0; i < starX.length; i++) {
@@ -103,109 +86,71 @@ final class Renderer {
         }
     }
 
-    private Color baseColor(Brick k) {
-        switch (k.kind) {
-        case STEEL: return Color.web("#7b8394");
-        case EXPLOSIVE: return Color.hsb(8, 0.85, 0.95);
-        case GOLD: return Color.web("#ffd24a");
-        case LIGHTNING: return Color.web("#2a3270");
-        case ROCK: return Color.web("#8a6a4a");
-        case BUTTON: return Color.web("#4a4f66");
-        case PHASE: return Color.web("#3fb8c9");
-        case BONUS: return k.bonus.bad ? Color.web("#3a1018") : Color.hsb(k.bonus.hue, 0.8, 0.95);
-        default: return Color.hsb(k.hue(), 0.75, 0.95);
-        }
+    private void drawDuelBackground(GraphicsContext gc) {
+        gc.setFill(duelBg);
+        gc.fillRect(0, 0, Game.W, Game.H);
+        gc.setFill(duelGlow);
+        gc.fillRect(0, 0, Game.W, Game.H);
+        gc.setStroke(Color.rgb(255, 255, 255, 0.05));
+        gc.setLineWidth(1);
+        for (double x = 0; x <= Game.W; x += 40) gc.strokeLine(x, Game.TOP, x, Game.H);
+        for (double y = Game.TOP; y <= Game.H; y += 40) gc.strokeLine(0, y, Game.W, y);
+        gc.setFill(duelLeft);   // camp du joueur blanc : lumiere
+        gc.fillRect(0, Game.TOP, 160, Game.H - Game.TOP);
+        gc.setFill(duelRight);  // camp du joueur noir : ombre
+        gc.fillRect(Game.W - 160, Game.TOP, 160, Game.H - Game.TOP);
+        gc.setStroke(Color.rgb(255, 255, 255, 0.2));
+        gc.setLineWidth(2);
+        gc.setLineDashes(10, 10);
+        gc.strokeLine(Game.W / 2, Game.TOP, Game.W / 2, Game.H);
+        gc.setLineDashes((double[]) null);
     }
 
-    private void drawBrick(GraphicsContext gc, Brick k, double t) {
-        double x = k.x, y = k.y, w = Game.BW, h = Game.BH;
-        double cx = x + w / 2, cy = y + h / 2 - 1;
+    // ------------------------------------------------------------------ partie
 
-        if (k.kind == Brick.Kind.PHASE && !k.phaseSolid) { // fantome : indique ou la brique reapparaitra
-            gc.setStroke(Color.rgb(63, 184, 201, 0.30 + Math.min(0.4, k.flash * 2)));
-            gc.setLineWidth(2);
-            gc.strokeRoundRect(x + 1, y + 1, w - 2, h - 4, 8, 8);
-            return;
+    private void drawPlay(GraphicsContext gc, Game g, boolean duel) {
+        gc.save();
+        if (g.shake > 0.1) {
+            gc.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
         }
+        gc.setStroke(duel ? Color.web("#16213a") : Color.web("#33407f"));
+        gc.setLineWidth(2);
+        gc.strokeLine(0, Game.TOP, Game.W, Game.TOP);
 
-        Color base = baseColor(k);
-        if (k.flash > 0) base = base.interpolate(Color.WHITE, Math.min(1, k.flash * 6));
-        gc.setFill(base.darker().darker());
-        gc.fillRoundRect(x, y + 2, w, h, 8, 8);
-        gc.setFill(base);
-        gc.fillRoundRect(x, y, w, h - 2, 8, 8);
-        gc.setFill(Color.rgb(255, 255, 255, 0.28));
-        gc.fillRoundRect(x + 3, y + 2, w - 6, 6, 6, 6);
+        for (Brick k : g.bricks) {
+            if (k.alive) Art.brick(gc, k, g.time);
+        }
+        boolean night = g.nightTimer > 0;
+        if (night) drawNight(gc, g);
 
-        switch (k.kind) {
-        case EXPLOSIVE:
-            gc.setFill(Color.web("#3b0a00"));
-            gc.fillOval(cx - 7, cy - 7, 14, 14);
-            gc.setFill(Color.YELLOW);
-            gc.fillOval(cx - 3, cy - 3, 6, 6);
-            break;
-        case STEEL:
-            gc.setFill(Color.rgb(40, 45, 60, 0.7));
-            gc.fillOval(x + 5, y + 5, 4, 4);
-            gc.fillOval(x + w - 9, y + 5, 4, 4);
-            gc.fillOval(x + 5, y + h - 11, 4, 4);
-            gc.fillOval(x + w - 9, y + h - 11, 4, 4);
-            break;
-        case GOLD: {
-            gc.setStroke(Color.web("#a87a00"));
-            gc.setLineWidth(1.5);
-            gc.strokeRoundRect(x + 0.75, y + 0.75, w - 1.5, h - 3.5, 8, 8);
-            double sp = (t * 1.3 + k.col * 0.37 + k.row * 0.71) % 3.0; // petit scintillement
-            if (sp < 0.4) {
-                double sx = x + 6 + (w - 12) * (sp / 0.4);
-                gc.setStroke(Color.rgb(255, 255, 255, 0.9));
-                gc.setLineWidth(2);
-                gc.strokeLine(sx - 4, cy, sx + 4, cy);
-                gc.strokeLine(sx, cy - 4, sx, cy + 4);
-            }
-            break;
+        for (Beam b : g.beams) drawBeam(gc, b);
+        for (Paddle p : g.paddles) {
+            if (p.wallTimer > 0) drawWall(gc, g, p);
         }
-        case LIGHTNING:
-            gc.setStroke(Color.web("#ffe44d"));
-            gc.setLineWidth(3);
-            gc.strokePolyline(new double[] { cx - 4, cx + 3, cx - 3, cx + 4 },
-                    new double[] { cy - 8, cy - 2, cy + 1, cy + 8 }, 4);
-            break;
-        case ROCK:
-            gc.setFill(Color.web("#4a3322"));
-            gc.fillPolygon(new double[] { cx - 9, cx - 3, cx + 7, cx + 10, cx + 4, cx - 6 },
-                    new double[] { cy + 2, cy - 7, cy - 6, cy + 2, cy + 8, cy + 8 }, 6);
-            gc.fillPolygon(new double[] { x + 6, x + 14, x + 14 }, new double[] { cy, cy - 5, cy + 5 }, 3);
-            gc.fillPolygon(new double[] { x + w - 6, x + w - 14, x + w - 14 }, new double[] { cy, cy - 5, cy + 5 }, 3);
-            break;
-        case BUTTON:
-            gc.setFill(Color.web("#262a3c"));
-            gc.fillOval(cx - 10, cy - 8, 20, 17);
-            gc.setFill(k.flash > 0 ? Color.web("#ff8a8a") : Color.web("#c0222c"));
-            gc.fillOval(cx - 7, cy - 6, 14, 12);
-            break;
-        case PHASE:
-            gc.setStroke(Color.rgb(255, 255, 255, 0.55));
-            gc.setLineWidth(2);
-            gc.strokeLine(x + 8, y + h - 7, x + 20, y + 5);
-            gc.strokeLine(x + 24, y + h - 7, x + 36, y + 5);
-            gc.strokeLine(x + 40, y + h - 7, x + 52, y + 5);
-            break;
-        case BONUS: {
-            boolean bad = k.bonus.bad;
-            double a = 0.45 + 0.35 * Math.sin(t * 5);
-            gc.setStroke(bad ? Color.rgb(255, 70, 70, 0.5 + 0.4 * Math.sin(t * 6)) : Color.rgb(255, 255, 255, a));
-            gc.setLineWidth(2);
-            gc.strokeRoundRect(x + 1, y + 1, w - 2, h - 4, 8, 8);
-            gc.setTextAlign(TextAlignment.CENTER);
-            gc.setTextBaseline(VPos.CENTER);
-            gc.setFont(fMed);
-            gc.setFill(bad ? Color.web("#ff7070") : Color.web("#10142e"));
-            gc.fillText(k.bonus.label, cx, cy + 1);
-            break;
+        for (Paddle p : g.paddles) drawPaddle(gc, g, p);
+        if (!night) { // en pleine nuit, les bonus qui tombent sont invisibles
+            for (PowerUp u : g.powerUps) Art.capsule(gc, u.type, u.x, u.y + Math.sin(u.t * 8) * 1.5, u.t);
         }
-        default:
-            break;
+        for (Ghost gh : g.ghosts) drawGhost(gc, gh, g.time);
+        for (Star st : g.stars) drawStar(gc, st);
+        for (Ball b : g.balls) drawBall(gc, g, b);
+        drawParticles(gc, g);
+        gc.restore();
+
+        drawHud(gc, g);
+        drawOverlay(gc, g);
+    }
+
+    /** Nuit : tout est noir sauf raquettes, balles, effets et briques qui viennent de disparaitre. */
+    private void drawNight(GraphicsContext gc, Game g) {
+        double elapsed = Game.NIGHT_TIME - g.nightTimer;
+        double a = 0.97 * Math.min(1, elapsed / 0.4) * Math.min(1, g.nightTimer / 0.8);
+        gc.setFill(Color.rgb(0, 0, 4, a));
+        gc.fillRect(-20, -20, Game.W + 40, Game.H + 40);
+        for (double[] d : g.deaths) { // on voit brievement les briques qui se detruisent
+            double f = Math.max(0, Math.min(1, d[5] / 0.5));
+            gc.setFill(Color.hsb(Art.hue(d[4]), 0.7, 1, 0.85 * f));
+            gc.fillRoundRect(d[0], d[1], d[2], d[3], 8, 8);
         }
     }
 
@@ -227,7 +172,7 @@ final class Renderer {
             gc.strokePolyline(xs, ys, n + 1);
         } else {
             gc.setFill(Color.rgb(160, 115, 70, a * 0.40));
-            gc.fillRect(b.a, b.pos - Game.BH / 2, b.b - b.a, Game.BH);
+            gc.fillRect(b.a, b.pos - b.thick / 2, b.b - b.a, b.thick);
             for (int i = 0; i <= n; i++) {
                 xs[i] = b.a + (b.b - b.a) * i / n;
                 ys[i] = b.pos + ((i == 0 || i == n) ? 0 : (r.nextDouble() - 0.5) * 14);
@@ -265,13 +210,13 @@ final class Renderer {
         Color glow, body, light, edge;
         if (g.twoPlayer) {
             if (p.index == 0) { // blanc
-                glow = Color.rgb(255, 255, 255, 0.30);
-                body = PAPER;
+                glow = Color.rgb(255, 255, 255, 0.35);
+                body = Theme.PAPER;
                 light = Color.rgb(120, 120, 140, 0.35);
-                edge = INK;
+                edge = Theme.INK;
             } else {            // noir
-                glow = Color.rgb(0, 0, 0, 0.28);
-                body = INK;
+                glow = Color.rgb(0, 0, 0, 0.30);
+                body = Theme.INK;
                 light = Color.rgb(255, 255, 255, 0.25);
                 edge = Color.web("#f4f4fb");
             }
@@ -291,7 +236,7 @@ final class Renderer {
         if (p.vertical) gc.fillRoundRect(x + 3, y + 6, 4, h - 12, 4, 4);
         else gc.fillRoundRect(x + 6, y + 3, w - 12, 4, 4, 4);
 
-        if (fire && g.twoPlayer) { // lisere orange
+        if (fire && g.twoPlayer) { // liseret orange
             gc.setStroke(Color.web("#ff9a3c"));
             gc.setLineWidth(2);
             gc.strokeRoundRect(x - 3, y - 3, w + 6, h + 6, arc + 3, arc + 3);
@@ -306,6 +251,19 @@ final class Renderer {
             gc.setFill(Color.hsb(60, 0.8, 1, 0.95));
             if (p.vertical) gc.fillRoundRect(s0, y + 2, 5, h - 4, 5, 5);
             else gc.fillRoundRect(x + 2, s0, w - 4, 5, 5, 5);
+        }
+        if (p.starTimer > 0) { // aura doree : etoile filante prete, un clic la lance
+            double pulse = 0.5 + 0.5 * Math.sin(g.time * 8);
+            gc.setStroke(Color.rgb(255, 215, 70, 0.40 + 0.40 * pulse));
+            gc.setLineWidth(3);
+            gc.strokeRoundRect(x - 8, y - 8, w + 16, h + 16, arc + 8, arc + 8);
+            gc.setStroke(Color.rgb(255, 240, 160, 0.15 + 0.25 * pulse));
+            gc.setLineWidth(5);
+            gc.strokeRoundRect(x - 14, y - 14, w + 28, h + 28, arc + 14, arc + 14);
+            gc.setFill(Color.rgb(255, 225, 90, 0.95));
+            double sx = p.vertical ? p.face - p.toward * 22 : p.pos;
+            double sy = p.vertical ? p.pos : p.face - p.toward * 22;
+            Art.star(gc, sx, sy, 8, 3.6, g.time * 2);
         }
     }
 
@@ -326,11 +284,12 @@ final class Renderer {
             trail = Color.rgb(255, 140, 40, 1);
             glow = Color.rgb(255, 120, 30, 0.18);
             body = Color.web("#ffd27a");
+            if (duel) ring = black ? Color.web("#f4f4fb") : Theme.INK;
         } else if (duel) {
             trail = black ? Color.rgb(20, 20, 28, 1) : Color.rgb(255, 255, 255, 1);
-            glow = black ? Color.rgb(0, 0, 0, 0.18) : Color.rgb(255, 255, 255, 0.28);
-            body = black ? INK : PAPER;
-            ring = black ? Color.web("#f4f4fb") : INK;
+            glow = black ? Color.rgb(0, 0, 0, 0.22) : Color.rgb(255, 255, 255, 0.30);
+            body = black ? Theme.INK : Theme.PAPER;
+            ring = black ? Color.web("#f4f4fb") : Theme.INK;
         } else {
             trail = Color.rgb(150, 200, 255, 1);
             glow = Color.rgb(170, 210, 255, 0.15);
@@ -355,98 +314,77 @@ final class Renderer {
         gc.fillOval(b.x - r, b.y - r, r * 2, r * 2);
     }
 
-    private void drawPowerUp(GraphicsContext gc, PowerUp u) {
-        double bob = Math.sin(u.t * 8) * 1.5;
-        gc.setFill(Color.rgb(255, 255, 255, 0.12));
-        gc.fillRoundRect(u.x - 21, u.y - 15 + bob, 42, 30, 30, 30);
-        if (u.type.bad) { // malus : fond sombre, contour rouge
-            gc.setFill(Color.web("#3a1018"));
-            gc.fillRoundRect(u.x - 16, u.y - 10 + bob, 32, 20, 20, 20);
-            gc.setStroke(Color.rgb(255, 70, 70, 0.7 + 0.3 * Math.sin(u.t * 10)));
-            gc.setLineWidth(2);
-            gc.strokeRoundRect(u.x - 16, u.y - 10 + bob, 32, 20, 20, 20);
-        } else {
-            gc.setFill(Color.hsb(u.type.hue, 0.8, 0.95));
-            gc.fillRoundRect(u.x - 16, u.y - 10 + bob, 32, 20, 20, 20);
+    /** Petit fantome extraterrestre. */
+    private void drawGhost(GraphicsContext gc, Ghost gh, double time) {
+        double x = gh.x, y = gh.y;
+        double wob = Math.sin(time * 10 + gh.t * 6) * 1.5;
+        gc.setFill(Color.rgb(150, 255, 175, 0.22));
+        gc.fillOval(x - 15, y - 15, 30, 30);
+        gc.setStroke(Color.web("#b5ffc4"));
+        gc.setLineWidth(2);
+        gc.strokeLine(x, y - 8, x, y - 13);
+        gc.setFill(Color.web("#d6ffe0"));
+        gc.fillOval(x - 2, y - 16, 4, 4);
+        gc.setFill(Color.web("#b5ffc4"));
+        gc.fillOval(x - 8, y - 9, 16, 16);
+        gc.fillRect(x - 8, y - 1, 16, 8);
+        for (int i = 0; i < 3; i++) gc.fillOval(x - 8 + i * 5.4, y + 3 + (i % 2 == 0 ? wob : -wob) * 0.5, 5.4, 6);
+        gc.setFill(Color.web("#10241a"));
+        gc.fillOval(x - 6, y - 4, 5, 7);
+        gc.fillOval(x + 1, y - 4, 5, 7);
+        gc.setFill(Color.WHITE);
+        gc.fillOval(x - 4.5, y - 3, 2, 2);
+        gc.fillOval(x + 2.5, y - 3, 2, 2);
+    }
+
+    private void drawStar(GraphicsContext gc, Star s) {
+        double len = Math.hypot(s.vx, s.vy);
+        double ux = len > 0 ? s.vx / len : 0, uy = len > 0 ? s.vy / len : -1;
+        for (int i = 1; i <= 7; i++) { // traine
+            double f = 1 - i / 8.0;
+            gc.setFill(Color.rgb(255, 210, 80, 0.45 * f));
+            double r = 7 * f;
+            gc.fillOval(s.x - ux * i * 8 - r, s.y - uy * i * 8 - r, r * 2, r * 2);
         }
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.setTextBaseline(VPos.CENTER);
-        gc.setFont(fTiny);
-        gc.setFill(u.type.bad ? Color.web("#ff7070") : Color.web("#10142e"));
-        gc.fillText(u.type.label, u.x, u.y + bob + 1);
+        gc.setFill(Color.rgb(255, 235, 140, 0.25));
+        gc.fillOval(s.x - 16, s.y - 16, 32, 32);
+        gc.setFill(Color.rgb(255, 225, 80, 1));
+        Art.star(gc, s.x, s.y, 10, 4.4, s.t * 9);
     }
 
     private void drawParticles(GraphicsContext gc, Game g) {
         for (Particle p : g.particles) {
             double a = Math.max(0, Math.min(1, p.life / p.maxLife));
-            gc.setFill(Color.hsb(hue(p.hue), 0.7, 1.0, a));
+            gc.setFill(Color.hsb(Art.hue(p.hue), 0.7, 1.0, a));
             gc.fillRect(p.x, p.y, p.size, p.size);
         }
-    }
-
-    private static double hue(double h) {
-        return ((h % 360) + 360) % 360;
     }
 
     // ------------------------------------------------------------------ HUD
 
     private void drawHud(GraphicsContext gc, Game g) {
-        gc.setTextBaseline(VPos.CENTER);
         if (g.twoPlayer) drawHudDuel(gc, g);
         else drawHudSolo(gc, g);
 
-        // Compteur d'or et son coupe
-        gc.setTextAlign(TextAlignment.RIGHT);
         if (g.goldTotal > 0) {
-            gc.setFont(fMed);
-            gc.setFill(g.twoPlayer ? Color.web("#fff0a0") : GOLD);
             String t = "OR  " + (g.goldTotal - g.goldRemaining) + " / " + g.goldTotal;
-            if (g.twoPlayer) {
-                gc.setTextAlign(TextAlignment.CENTER);
-                strokeText(gc, t, Game.W / 2, Game.H - 14);
-            } else {
-                gc.fillText(t, Game.W - 20, Game.H - 14);
-            }
+            if (g.twoPlayer) Theme.center(gc, t, Game.W / 2, Game.H - 14, Theme.MED, Color.web("#fff0a0"));
+            else Theme.right(gc, t, Game.W - 20, Game.H - 14, Theme.MED, Theme.GOLD);
         }
-        if (g.muted) {
-            gc.setTextAlign(TextAlignment.RIGHT);
-            gc.setFont(fTiny);
-            gc.setFill(Color.web("#8a94c8"));
-            gc.fillText("SON COUP\u00c9 (N)", Game.W - 20, 49);
-        }
-    }
-
-    /** Texte avec lisere sombre : lisible sur le fond gris du duel. */
-    private void strokeText(GraphicsContext gc, String t, double x, double y) {
-        gc.setStroke(Color.rgb(20, 22, 40, 0.9));
-        gc.setLineWidth(3);
-        gc.strokeText(t, x, y);
-        gc.fillText(t, x, y);
+        if (g.muted) Theme.right(gc, "SON COUP\u00c9 (N)", Game.W - 20, 49, Theme.TINY, Color.web("#8a94c8"));
     }
 
     private void drawHudSolo(GraphicsContext gc, Game g) {
-        gc.setTextAlign(TextAlignment.LEFT);
-        gc.setFont(fHud);
-        gc.setFill(WHITE);
-        gc.fillText("SCORE  " + g.score(), 20, 20);
-        gc.setFont(fTiny);
-        gc.setFill(Color.web("#8a94c8"));
+        Paddle p = g.paddles[0];
+        Theme.left(gc, "SCORE  " + g.score(), 20, 20, Theme.HUD, Theme.WHITE);
         int best = g.campaign ? g.highScore : g.levelBest[g.level];
-        gc.fillText("RECORD  " + best, 20, 42);
-
+        Theme.left(gc, "RECORD  " + best, 20, 42, Theme.TINY, Color.web("#8a94c8"));
         int m = g.multiplier(0);
-        if (m > 1) {
-            gc.setFont(fHud);
-            gc.setFill(Color.hsb(50, 0.9, 1));
-            gc.fillText("x" + m, 250, 24);
-        }
+        if (m > 1) Theme.left(gc, "x" + m, 250, 24, Theme.HUD, Color.hsb(50, 0.9, 1));
+        Theme.center(gc, "NIVEAU " + (g.level + 1) + "  -  " + Levels.get(g.level).name, Game.W / 2, 28,
+                Theme.SMALL, Theme.SOFT);
 
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(fSmall);
-        gc.setFill(SOFT);
-        gc.fillText("NIVEAU " + (g.level + 1) + "  -  " + Levels.get(g.level).name, Game.W / 2, 28);
-
-        for (int i = 0; i < g.lives; i++) {
+        for (int i = 0; i < p.lives; i++) {
             double x = Game.W - 30 - i * 24;
             gc.setFill(Color.rgb(170, 210, 255, 0.2));
             gc.fillOval(x - 11, 17, 22, 22);
@@ -454,24 +392,19 @@ final class Renderer {
             gc.fillOval(x - 7, 21, 14, 14);
         }
 
-        double y = timers(gc, g.paddles[0], 20, Game.H - 14);
+        double y = timers(gc, p, 20, Game.H - 14);
         timerBar(gc, "RALENTI", g.slowTimer, 8, 20, y, 270, 0.8);
     }
 
+    /** En duel les scores restent caches jusqu'au tableau final ; on ne voit que les balles restantes. */
     private void drawHudDuel(GraphicsContext gc, Game g) {
-        gc.setFill(Color.rgb(10, 12, 30, 0.80)); // bandeau sombre derriere les scores
+        gc.setFill(Color.rgb(10, 12, 30, 0.82));
         gc.fillRect(0, 0, Game.W, Game.TOP);
-
         pill(gc, g, 0, 20, "BLANC");
         pill(gc, g, 1, Game.W - 20 - 200, "NOIR");
-
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.setFont(fSmall);
-        gc.setFill(SOFT);
-        gc.fillText("NIVEAU " + (g.level + 1) + "  -  " + Levels.get(g.level).name, Game.W / 2, 20);
-        gc.setFont(fTiny);
-        gc.setFill(Color.web("#8a94c8"));
-        gc.fillText("DUEL", Game.W / 2, 40);
+        Theme.center(gc, "NIVEAU " + (g.level + 1) + "  -  " + Levels.get(g.level).name, Game.W / 2, 20,
+                Theme.SMALL, Theme.SOFT);
+        Theme.center(gc, "DUEL", Game.W / 2, 40, Theme.TINY, Color.web("#8a94c8"));
 
         timers(gc, g.paddles[0], 20, Game.H - 14);
         timers(gc, g.paddles[1], Game.W - 20 - 192, Game.H - 14);
@@ -480,21 +413,17 @@ final class Renderer {
 
     private void pill(GraphicsContext gc, Game g, int player, double x, String name) {
         boolean white = player == 0;
-        gc.setFill(white ? PAPER : INK);
+        gc.setFill(white ? Theme.PAPER : Theme.INK);
         gc.fillRoundRect(x, 12, 200, 32, 16, 16);
-        gc.setStroke(white ? INK : Color.web("#f4f4fb"));
+        gc.setStroke(white ? Theme.INK : Color.web("#f4f4fb"));
         gc.setLineWidth(2);
         gc.strokeRoundRect(x, 12, 200, 32, 16, 16);
-        gc.setTextAlign(TextAlignment.LEFT);
-        gc.setFont(fHud);
-        gc.setFill(white ? INK : PAPER);
-        gc.fillText(name + "  " + g.paddles[player].score, x + 14, 29);
-        int m = g.multiplier(player);
-        if (m > 1) {
-            gc.setFont(fHud);
-            gc.setFill(Color.hsb(50, 0.9, 1));
-            gc.setTextAlign(white ? TextAlignment.LEFT : TextAlignment.RIGHT);
-            gc.fillText("x" + m, white ? x + 210 : x - 10, 29);
+        Theme.left(gc, name, x + 14, 29, Theme.HUD, white ? Theme.INK : Theme.PAPER);
+        Paddle p = g.paddles[player];
+        for (int i = 0; i < p.lives; i++) { // balles restantes
+            double bx = x + 186 - i * 18;
+            gc.setFill(white ? Theme.INK : Theme.PAPER);
+            gc.fillOval(bx - 7, 22, 14, 14);
         }
     }
 
@@ -505,6 +434,8 @@ final class Renderer {
         y = timerBar(gc, "COLLANT", p.stickyTimer, 15, x, y, 60, 0.8);
         y = timerBar(gc, "FEU", p.fireTimer, 6, x, y, 25, 0.8);
         y = timerBar(gc, "MUR", p.wallTimer, 8, x, y, 300, 0.6);
+        y = timerBar(gc, "FANT\u00d4MES", p.ghostTimer, 5, x, y, 150, 0.6);
+        y = timerBar(gc, "\u00c9TOILE", p.starTimer, 8, x, y, 45, 0.8);
         y = timerBar(gc, "INOFFENSIF", p.nobreakTimer, 5, x, y, 0, 0.9);
         return y;
     }
@@ -512,10 +443,7 @@ final class Renderer {
     private double timerBar(GraphicsContext gc, String label, double t, double max, double x, double y,
             double hue, double sat) {
         if (t <= 0) return y;
-        gc.setTextAlign(TextAlignment.LEFT);
-        gc.setFont(fTiny);
-        gc.setFill(Color.hsb(hue, 0.5, 1));
-        gc.fillText(label, x, y);
+        Theme.left(gc, label, x, y, Theme.TINY, Color.hsb(hue, 0.5, 1));
         gc.setFill(Color.rgb(255, 255, 255, 0.15));
         gc.fillRoundRect(x + 92, y - 4, 100, 8, 8, 8);
         gc.setFill(Color.hsb(hue, sat, 1));
@@ -526,18 +454,13 @@ final class Renderer {
     // ------------------------------------------------------------------ menu
 
     private void drawMenu(GraphicsContext gc, Game g) {
-        center(gc, "CASSE-BRIQUE", 72, fTitle, Color.hsb(hue(200 + Math.sin(g.time) * 40), 0.7, 1));
+        Theme.center(gc, "CASSE-BRIQUE", Game.W / 2, 72, Theme.TITLE, Color.hsb(Art.hue(200 + Math.sin(g.time) * 40), 0.7, 1));
 
-        boolean hc = g.hoverCampaign;
-        gc.setFill(hc ? Color.rgb(120, 170, 255, 0.35) : Color.rgb(120, 170, 255, 0.16));
-        gc.fillRoundRect(Game.CAMP_X, Game.CAMP_Y, Game.CAMP_W, Game.CAMP_H, 14, 14);
-        gc.setStroke(Color.web(hc ? "#cfe0ff" : "#6f8de0"));
-        gc.setLineWidth(2);
-        gc.strokeRoundRect(Game.CAMP_X, Game.CAMP_Y, Game.CAMP_W, Game.CAMP_H, 14, 14);
-        center(gc, "CAMPAGNE  (ESPACE)", Game.CAMP_Y + 18, fMed, WHITE);
-        center(gc, "niveaux solo encha\u00een\u00e9s - record : " + g.highScore, Game.CAMP_Y + 38, fTiny, GOLD);
+        button(gc, Game.CAMP_X, Game.CAMP_Y, Game.CAMP_W, Game.CAMP_H, g.hoverCampaign);
+        Theme.center(gc, "CAMPAGNE  (ESPACE)", Game.W / 2, Game.CAMP_Y + 18, Theme.MED, Theme.WHITE);
+        Theme.center(gc, "niveaux solo encha\u00een\u00e9s - record : " + g.highScore, Game.W / 2, Game.CAMP_Y + 38, Theme.TINY, Theme.GOLD);
 
-        center(gc, "ou choisissez directement un niveau", 195, fSmall, SOFT);
+        Theme.center(gc, "ou choisissez directement un niveau", Game.W / 2, 195, Theme.SMALL, Theme.SOFT);
 
         int first = g.menuPage * Game.PER_PAGE;
         for (int local = 0; local < Game.PER_PAGE && first + local < Levels.count(); local++) {
@@ -546,70 +469,57 @@ final class Renderer {
             double cx = Game.cardX(local), cy = Game.cardY(local);
             boolean hover = g.hoverCard == i;
             double hu = lv.twoPlayer ? 0 : (200 + i * 29) % 360;
-            double sat = lv.twoPlayer ? 0.0 : 0.5; // les duels sont en gris/blanc
+            double sat = lv.twoPlayer ? 0.0 : 0.5; // les duels sont en blanc / gris
             gc.setFill(Color.hsb(hu, sat, 0.9, hover ? 0.38 : 0.16));
             gc.fillRoundRect(cx, cy, Game.CARD_W, Game.CARD_H, 12, 12);
             gc.setStroke(Color.hsb(hu, sat, 1, hover ? 1.0 : 0.55));
             gc.setLineWidth(hover ? 3 : 2);
             gc.strokeRoundRect(cx, cy, Game.CARD_W, Game.CARD_H, 12, 12);
 
-            gc.setTextAlign(TextAlignment.LEFT);
-            gc.setTextBaseline(VPos.CENTER);
-            gc.setFont(fTiny);
-            gc.setFill(Color.hsb(hu, sat * 0.8, 1));
-            gc.fillText("NIVEAU " + (i + 1), cx + 14, cy + 18);
+            Theme.left(gc, "NIVEAU " + (i + 1), cx + 14, cy + 18, Theme.TINY, Color.hsb(hu, sat * 0.8, 1));
             if (lv.twoPlayer) {
-                gc.setFill(PAPER);
+                gc.setFill(Theme.PAPER);
                 gc.fillRoundRect(cx + Game.CARD_W - 92, cy + 9, 80, 18, 9, 9);
-                gc.setFill(INK);
-                gc.setTextAlign(TextAlignment.CENTER);
-                gc.fillText("2 JOUEURS", cx + Game.CARD_W - 52, cy + 18);
-                gc.setTextAlign(TextAlignment.LEFT);
+                Theme.center(gc, "2 JOUEURS", cx + Game.CARD_W - 52, cy + 18, Theme.TINY, Theme.INK);
             }
-            gc.setFont(fMed);
-            gc.setFill(WHITE);
-            gc.fillText(lv.name, cx + 14, cy + 42);
-            gc.setFont(fTiny);
+            Theme.left(gc, lv.name, cx + 14, cy + 42, Theme.MED, Theme.WHITE);
             if (lv.twoPlayer) {
-                gc.setFill(Color.web("#9aa3d0"));
-                gc.fillText("Blanc contre Noir", cx + 14, cy + 64);
+                Theme.left(gc, "Blanc contre Noir", cx + 14, cy + 64, Theme.TINY, Color.web("#9aa3d0"));
             } else {
-                gc.setFill(g.levelBest[i] > 0 ? GOLD : Color.web("#6a74a8"));
-                gc.fillText("Meilleur : " + (g.levelBest[i] > 0 ? String.valueOf(g.levelBest[i]) : "-"), cx + 14, cy + 64);
+                boolean has = g.levelBest[i] > 0;
+                Theme.left(gc, "Meilleur : " + (has ? String.valueOf(g.levelBest[i]) : "-"), cx + 14, cy + 64,
+                        Theme.TINY, has ? Theme.GOLD : Color.web("#6a74a8"));
             }
         }
 
         if (g.pageCount() > 1) {
-            arrow(gc, "<", Game.PREV_X, g.menuPage > 0, g.hoverPrev);
-            arrow(gc, ">", Game.NEXT_X, g.menuPage < g.pageCount() - 1, g.hoverNext);
-            center(gc, "Page " + (g.menuPage + 1) + " / " + g.pageCount(), Game.PAGE_Y + Game.PAGE_H / 2, fSmall, SOFT);
+            arrow(gc, "<", Game.PREV_X, Game.PAGE_Y, g.menuPage > 0, g.hoverPrev);
+            arrow(gc, ">", Game.NEXT_X, Game.PAGE_Y, g.menuPage < g.pageCount() - 1, g.hoverNext);
+            Theme.center(gc, "Page " + (g.menuPage + 1) + " / " + g.pageCount(), Game.W / 2,
+                    Game.PAGE_Y + Game.PAGE_H / 2, Theme.SMALL, Theme.SOFT);
         }
 
-        center(gc, "Souris ou fl\u00e8ches / Q-D : raquette   |   Clic / ESPACE : lancer   |   P : pause   |   N : son   |   F11 : plein \u00e9cran",
-                530, fTiny, SOFT);
-        center(gc, "Bonus : L = large   M = multi-balles   S = ralenti   F = feu   C = collante   = = mur de secours   + = vie",
-                548, fTiny, SOFT);
-        center(gc, "Malus (fond sombre) : - = raquette r\u00e9duite   \u00d7 = balle inoffensive   |   Les briques-lettres agissent d\u00e8s qu'on les touche",
-                566, fTiny, SOFT);
-        center(gc, "\u00c9clair = colonne   Roche = ligne   Or = niveau fini quand tout l'or est pris   Bouton = fait basculer les briques cyan",
-                584, fTiny, SOFT);
-        center(gc, "Duel : Blanc (gauche) Z/S + ESPACE   |   Noir (droite) fl\u00e8ches haut/bas + ENTR\u00c9E   |   balle rat\u00e9e = points perdus",
-                602, fTiny, SOFT);
-        center(gc, "Menu : fl\u00e8ches gauche/droite ou boutons pour changer de page", 620, fTiny, Color.web("#7a84b8"));
+        button(gc, Game.INFO_X, Game.INFO_Y, Game.INFO_W, Game.INFO_H, g.hoverInfoBtn);
+        Theme.center(gc, "INFORMATIONS", Game.W / 2, Game.INFO_Y + Game.INFO_H / 2, Theme.MED, Theme.WHITE);
     }
 
-    private void arrow(GraphicsContext gc, String label, double x, boolean enabled, boolean hover) {
+    static void button(GraphicsContext gc, double x, double y, double w, double h, boolean hover) {
+        gc.setFill(hover ? Color.rgb(120, 170, 255, 0.35) : Color.rgb(120, 170, 255, 0.16));
+        gc.fillRoundRect(x, y, w, h, 14, 14);
+        gc.setStroke(Color.web(hover ? "#cfe0ff" : "#6f8de0"));
+        gc.setLineWidth(2);
+        gc.strokeRoundRect(x, y, w, h, 14, 14);
+    }
+
+    static void arrow(GraphicsContext gc, String label, double x, double y, boolean enabled, boolean hover) {
         double a = enabled ? (hover ? 0.4 : 0.18) : 0.06;
         gc.setFill(Color.rgb(120, 170, 255, a));
-        gc.fillRoundRect(x, Game.PAGE_Y, Game.PAGE_W, Game.PAGE_H, 10, 10);
+        gc.fillRoundRect(x, y, Game.PAGE_W, Game.PAGE_H, 10, 10);
         gc.setStroke(Color.rgb(160, 190, 255, enabled ? (hover ? 1.0 : 0.6) : 0.2));
         gc.setLineWidth(2);
-        gc.strokeRoundRect(x, Game.PAGE_Y, Game.PAGE_W, Game.PAGE_H, 10, 10);
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.setTextBaseline(VPos.CENTER);
-        gc.setFont(fMed);
-        gc.setFill(enabled ? WHITE : Color.web("#4a5280"));
-        gc.fillText(label, x + Game.PAGE_W / 2, Game.PAGE_Y + Game.PAGE_H / 2);
+        gc.strokeRoundRect(x, y, Game.PAGE_W, Game.PAGE_H, 10, 10);
+        Theme.center(gc, label, x + Game.PAGE_W / 2, y + Game.PAGE_H / 2, Theme.MED,
+                enabled ? Theme.WHITE : Color.web("#4a5280"));
     }
 
     // ------------------------------------------------------------------ ecrans
@@ -617,14 +527,6 @@ final class Renderer {
     private void dim(GraphicsContext gc, double a) {
         gc.setFill(Color.rgb(4, 5, 13, a));
         gc.fillRect(0, 0, Game.W, Game.H);
-    }
-
-    private void center(GraphicsContext gc, String s, double y, Font f, Color c) {
-        gc.setTextAlign(TextAlignment.CENTER);
-        gc.setTextBaseline(VPos.CENTER);
-        gc.setFont(f);
-        gc.setFill(c);
-        gc.fillText(s, Game.W / 2, y);
     }
 
     private Color blink(Game g, Color c) {
@@ -637,66 +539,238 @@ final class Renderer {
         case READY:
             if (g.stateTime < 1.8) {
                 double a = Math.min(1, (1.8 - g.stateTime));
-                center(gc, "NIVEAU " + (g.level + 1), 400, fBig, Color.color(1, 1, 1, a));
-                center(gc, Levels.get(g.level).name, 445, fMed, Color.color(0.67, 0.71, 0.93, a));
+                Theme.center(gc, "NIVEAU " + (g.level + 1), Game.W / 2, 400, Theme.BIG, Color.color(1, 1, 1, a));
+                Theme.center(gc, Levels.get(g.level).name, Game.W / 2, 445, Theme.MED, Color.color(0.67, 0.71, 0.93, a));
             }
-            if (g.twoPlayer) {
-                boolean white = g.server == 0;
-                String who = white ? "BLANC sert : ESPACE" : "NOIR sert : ENTR\u00c9E";
-                Color c = white ? PAPER : INK;
-                gc.setFill(Color.rgb(white ? 20 : 240, white ? 22 : 240, white ? 40 : 250, 0.8));
-                gc.fillRoundRect(Game.W / 2 - 150, Game.H - 86, 300, 34, 17, 17);
-                center(gc, who, Game.H - 69, fMed, blink(g, c));
-            } else {
-                center(gc, "Clic / ESPACE pour lancer", Game.PADDLE_Y - 60, fSmall, blink(g, SOFT));
-            }
+            Theme.center(gc, "Clic / ESPACE pour lancer", Game.W / 2, Game.PADDLE_Y - 60, Theme.SMALL, blink(g, Theme.SOFT));
             break;
         case PLAYING:
-            for (Ball b : g.balls) {
-                if (b.stuck) {
-                    String t = g.twoPlayer ? "ESPACE (blanc) / ENTR\u00c9E (noir) pour relancer" : "Clic / ESPACE pour relancer";
-                    center(gc, t, g.twoPlayer ? Game.H - 69 : Game.PADDLE_Y - 60, fSmall, blink(g, g.twoPlayer ? WHITE : SOFT));
-                    break;
-                }
-            }
+            drawPlayingHints(gc, g);
             break;
         case PAUSED:
-            dim(gc, 0.65);
-            center(gc, "PAUSE", 280, fBig, WHITE);
-            center(gc, "P ou clic pour reprendre", 335, fSmall, SOFT);
-            center(gc, "M : retour au menu", 365, fSmall, SOFT);
+            drawPause(gc, g);
             break;
         case LEVEL_CLEAR:
             dim(gc, 0.55);
-            if (g.twoPlayer) {
-                String title = g.winner == 0 ? "BLANC GAGNE !" : (g.winner == 1 ? "NOIR GAGNE !" : "\u00c9GALIT\u00c9 !");
-                center(gc, title, 250, fBig, Color.hsb(50, 0.5, 1));
-                center(gc, "Blanc : " + g.paddles[0].score + "     Noir : " + g.paddles[1].score, 315, fHud, WHITE);
-                center(gc, "ESPACE pour revenir au menu", 390, fSmall, blink(g, SOFT));
-                break;
-            }
-            center(gc, g.endedByGold ? "TOUT L'OR EST RAMASS\u00c9 !" : "NIVEAU TERMIN\u00c9 !", 250, fBig, Color.hsb(140, 0.6, 1));
-            center(gc, "Bonus vies : +" + g.levelBonus, 305, fMed, WHITE);
-            center(gc, "Score : " + g.score(), 340, fMed, WHITE);
-            if (g.newRecord) center(gc, "Nouveau record !", 375, fMed, Color.hsb(50, 0.8, 1));
-            center(gc, g.campaign ? "ESPACE pour le niveau suivant" : "ESPACE pour revenir au menu", 420, fSmall, blink(g, SOFT));
-            break;
-        case GAME_OVER:
-            dim(gc, 0.7);
-            center(gc, "PARTIE TERMIN\u00c9E", 240, fBig, Color.hsb(5, 0.7, 1));
-            center(gc, "Score : " + g.score(), 305, fHud, WHITE);
-            if (g.newRecord) center(gc, "Nouveau record !", 345, fMed, Color.hsb(50, 0.8, 1));
-            center(gc, "ESPACE pour revenir au menu", 410, fSmall, blink(g, SOFT));
-            break;
-        case WIN:
-            dim(gc, 0.6);
-            center(gc, "VICTOIRE !", 230, fTitle, Color.hsb(hue(g.time * 80), 0.7, 1));
-            center(gc, "Score final : " + g.score(), 310, fHud, WHITE);
-            if (g.newRecord) center(gc, "Nouveau record !", 350, fMed, Color.hsb(50, 0.8, 1));
-            center(gc, "ESPACE pour revenir au menu", 420, fSmall, blink(g, SOFT));
+            Theme.center(gc, g.endedByGold ? "TOUT L'OR EST RAMASS\u00c9 !" : "NIVEAU TERMIN\u00c9 !", Game.W / 2, 250,
+                    Theme.BIG, Color.hsb(140, 0.6, 1));
+            Theme.center(gc, "Balles restantes : +" + g.levelBonus, Game.W / 2, 305, Theme.MED, Theme.WHITE);
+            Theme.center(gc, "Score : " + g.score(), Game.W / 2, 340, Theme.MED, Theme.WHITE);
+            Theme.center(gc, "ESPACE pour le niveau suivant", Game.W / 2, 420, Theme.SMALL, blink(g, Theme.SOFT));
             break;
         default:
             break;
         }
+    }
+
+    /** Pendant la partie : decompte du duel en grand, aide au lancement, etoile prete. */
+    private void drawPlayingHints(GraphicsContext gc, Game g) {
+        if (g.twoPlayer) {
+            Paddle a = g.paddles[0], b = g.paddles[1];
+            if (a.serveTimer > 0 && b.serveTimer > 0 && Math.abs(a.serveTimer - b.serveTimer) < 0.05) {
+                countdown(gc, g, a.serveTimer, Game.W / 2, Game.H / 2 - 10, null);
+            } else {
+                if (a.serveTimer > 0) countdown(gc, g, a.serveTimer, Game.W * 0.27, Game.H / 2 - 10, a);
+                if (b.serveTimer > 0) countdown(gc, g, b.serveTimer, Game.W * 0.73, Game.H / 2 - 10, b);
+            }
+            for (Paddle p : g.paddles) {
+                double hx = p.index == 0 ? Game.W * 0.27 : Game.W * 0.73;
+                if (p.serveTimer <= 0 && hasStuck(g, p)) {
+                    Theme.center(gc, p.index == 0 ? "ESPACE : lancer" : "ENTR\u00c9E : lancer", hx, Game.H / 2 + 100,
+                            Theme.MED, blink(g, Color.WHITE));
+                } else if (p.starTimer > 0 && p.serveTimer <= 0) {
+                    Theme.center(gc, p.index == 0 ? "ESPACE : \u00e9toile filante" : "ENTR\u00c9E : \u00e9toile filante", hx,
+                            Game.H / 2 + 100, Theme.SMALL, blink(g, Color.rgb(255, 225, 90)));
+                }
+            }
+        } else {
+            Paddle p = g.paddles[0];
+            if (hasStuck(g, p)) {
+                Theme.center(gc, "Clic / ESPACE pour relancer", Game.W / 2, Game.PADDLE_Y - 60, Theme.SMALL, blink(g, Theme.SOFT));
+            } else if (p.starTimer > 0) {
+                Theme.center(gc, "Clic / ESPACE : \u00e9toile filante", Game.W / 2, Game.PADDLE_Y - 60, Theme.SMALL,
+                        blink(g, Color.rgb(255, 225, 90)));
+            }
+        }
+    }
+
+    private boolean hasStuck(Game g, Paddle p) {
+        for (Ball b : g.balls) {
+            if (b.stuck && b.owner == p.index) return true;
+        }
+        return false;
+    }
+
+    /** Gros chiffre du decompte (3, 2, 1) qui se reduit a chaque seconde. */
+    private void countdown(GraphicsContext gc, Game g, double timer, double cx, double cy, Paddle p) {
+        int n = (int) Math.ceil(timer);
+        double frac = timer - Math.floor(timer);
+        if (frac == 0) frac = 1;
+        double alpha = 0.35 + 0.65 * frac;
+        Color fill = p == null ? Color.WHITE : (p.index == 0 ? Theme.PAPER : Theme.INK);
+        Color line = p == null ? Theme.INK : (p.index == 0 ? Theme.INK : Color.web("#f4f4fb"));
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.setFont(Theme.HUGE);
+        gc.setLineWidth(8);
+        gc.setStroke(Color.color(line.getRed(), line.getGreen(), line.getBlue(), alpha));
+        gc.setFill(Color.color(fill.getRed(), fill.getGreen(), fill.getBlue(), alpha));
+        gc.strokeText(String.valueOf(n), cx, cy);
+        gc.fillText(String.valueOf(n), cx, cy);
+    }
+
+    private void drawPause(GraphicsContext gc, Game g) {
+        dim(gc, 0.72);
+        Theme.center(gc, "PAUSE", Game.W / 2, 110, Theme.BIG, Theme.WHITE);
+        gc.setFill(Color.rgb(120, 170, 255, 0.12));
+        gc.fillRoundRect(110, 160, 740, 360, 18, 18);
+        gc.setStroke(Color.rgb(160, 190, 255, 0.5));
+        gc.setLineWidth(2);
+        gc.strokeRoundRect(110, 160, 740, 360, 18, 18);
+
+        if (!g.twoPlayer) {
+            Theme.center(gc, "CONTR\u00d4LES - 1 JOUEUR", Game.W / 2, 190, Theme.MED, Theme.GOLD);
+            Theme.left(gc, "D\u00e9placer la raquette", 150, 240, Theme.SMALL_BOLD, Theme.WHITE);
+            Theme.left(gc, "Souris, ou fl\u00e8ches gauche / droite, ou Q / D", 150, 264, Theme.SMALL, Theme.SOFT);
+            Theme.left(gc, "Lancer, relancer (balle collante), tirer l'\u00e9toile filante", 150, 314, Theme.SMALL_BOLD, Theme.WHITE);
+            Theme.left(gc, "Clic ou ESPACE", 150, 338, Theme.SMALL, Theme.SOFT);
+            Theme.left(gc, "Raquette : la balle repart selon l'endroit touch\u00e9", 150, 388, Theme.SMALL_BOLD, Theme.WHITE);
+            Theme.left(gc, "Touchez-la pr\u00e8s du bord pour un tir en biais", 150, 412, Theme.SMALL, Theme.SOFT);
+        } else {
+            Theme.center(gc, "CONTR\u00d4LES - 2 JOUEURS", Game.W / 2, 190, Theme.MED, Theme.GOLD);
+            gc.setFill(Theme.PAPER);
+            gc.fillRoundRect(140, 214, 320, 30, 15, 15);
+            Theme.center(gc, "BLANC (gauche)", 300, 229, Theme.SMALL_BOLD, Theme.INK);
+            gc.setFill(Theme.INK);
+            gc.fillRoundRect(500, 214, 320, 30, 15, 15);
+            gc.setStroke(Color.web("#f4f4fb"));
+            gc.setLineWidth(2);
+            gc.strokeRoundRect(500, 214, 320, 30, 15, 15);
+            Theme.center(gc, "NOIR (droite)", 660, 229, Theme.SMALL_BOLD, Theme.PAPER);
+            Theme.left(gc, "Monter : Z (ou W)", 160, 272, Theme.SMALL, Theme.WHITE);
+            Theme.left(gc, "Descendre : S", 160, 298, Theme.SMALL, Theme.WHITE);
+            Theme.left(gc, "Lancer / \u00e9toile : ESPACE", 160, 324, Theme.SMALL, Theme.WHITE);
+            Theme.left(gc, "Monter : fl\u00e8che haut", 520, 272, Theme.SMALL, Theme.WHITE);
+            Theme.left(gc, "Descendre : fl\u00e8che bas", 520, 298, Theme.SMALL, Theme.WHITE);
+            Theme.left(gc, "Lancer / \u00e9toile : ENTR\u00c9E", 520, 324, Theme.SMALL, Theme.WHITE);
+            Theme.center(gc, "Chacun a sa balle et 3 vies.", Game.W / 2, 378, Theme.SMALL_BOLD, Theme.WHITE);
+            Theme.center(gc, "Balle sortie de votre c\u00f4t\u00e9 : une vie en moins.", Game.W / 2, 402, Theme.SMALL, Theme.SOFT);
+            Theme.center(gc, "Balle sortie du c\u00f4t\u00e9 adverse : l'adversaire perd 100 points.", Game.W / 2, 424, Theme.SMALL, Theme.SOFT);
+        }
+        Theme.center(gc, "P ou \u00c9chap : reprendre     M : menu     N : son     F11 : plein \u00e9cran", Game.W / 2, 480,
+                Theme.SMALL_BOLD, Theme.WHITE);
+    }
+
+    // ------------------------------------------------------------------ tableau des scores
+
+    private double ease(double x) {
+        double c = Math.max(0, Math.min(1, x));
+        return 1 - (1 - c) * (1 - c);
+    }
+
+    private String fmt(int v) {
+        return String.valueOf(v);
+    }
+
+    private void drawResults(GraphicsContext gc, Game g) {
+        boolean duel = g.twoPlayer;
+        gc.setFill(Color.rgb(4, 5, 13, 0.82));
+        gc.fillRect(0, 0, Game.W, Game.H);
+
+        Theme.center(gc, g.resultTitle, Game.W / 2, 50, Theme.BIG, Theme.GOLD);
+        if (!g.resultNote.isEmpty()) Theme.center(gc, g.resultNote, Game.W / 2, 88, Theme.SMALL, Theme.SOFT);
+
+        int n = g.resLines;
+        double rowH = duel ? 42 : 46;
+        double y0 = duel ? 160 : 135;
+        double bx = duel ? 110 : 190, bw = duel ? 740 : 580;
+
+        if (duel) {
+            gc.setFill(Theme.PAPER);
+            gc.fillRoundRect(120, 106, 230, 32, 16, 16);
+            Theme.center(gc, "BLANC", 235, 122, Theme.HUD, Theme.INK);
+            gc.setFill(Theme.INK);
+            gc.fillRoundRect(610, 106, 230, 32, 16, 16);
+            gc.setStroke(Color.web("#f4f4fb"));
+            gc.setLineWidth(2);
+            gc.strokeRoundRect(610, 106, 230, 32, 16, 16);
+            Theme.center(gc, "NOIR", 725, 122, Theme.HUD, Theme.PAPER);
+        }
+
+        for (int i = 0; i < n && i < g.resRevealed; i++) {
+            double ti = Game.RES_START + i * Game.RES_STEP;
+            double age = g.stateTime - ti;
+            double y = y0 + i * rowH;
+            double prog = ease(age / 0.55);
+            gc.setFill(Color.rgb(255, 255, 255, 0.05 + 0.20 * Math.max(0, 1 - age / 0.6)));
+            gc.fillRoundRect(bx, y - 18, bw, 36, 10, 10);
+            if (duel) {
+                Theme.center(gc, Game.CAT_NAMES[i], Game.W / 2, y, Theme.SMALL, Theme.SOFT);
+                value(gc, g.paddles[0].pts[i], prog, 345, y, TextAlignment.RIGHT);
+                value(gc, g.paddles[1].pts[i], prog, 615, y, TextAlignment.LEFT);
+            } else {
+                Theme.left(gc, Game.CAT_NAMES[i], bx + 24, y, Theme.SMALL, Theme.SOFT);
+                value(gc, g.paddles[0].pts[i], prog, bx + bw - 24, y, TextAlignment.RIGHT);
+            }
+        }
+
+        if (g.resTotalShown) {
+            double age = g.stateTime - g.resultsTotalTime();
+            double prog = ease(age / 0.9);
+            double pop = 1 + 0.25 * Math.max(0, 1 - age / 0.35);
+            double y = y0 + n * rowH + 22;
+            gc.setStroke(Color.rgb(255, 210, 74, 0.8));
+            gc.setLineWidth(2);
+            gc.strokeLine(bx, y - 28, bx + bw, y - 28);
+            if (duel) {
+                Theme.center(gc, "TOTAL", Game.W / 2, y, Theme.HUD, Theme.GOLD);
+                bigValue(gc, g.paddles[0].score, prog, pop, 345, y, TextAlignment.RIGHT);
+                bigValue(gc, g.paddles[1].score, prog, pop, 615, y, TextAlignment.LEFT);
+            } else {
+                Theme.left(gc, "TOTAL", bx + 24, y, Theme.HUD, Theme.GOLD);
+                bigValue(gc, g.paddles[0].score, prog, pop, bx + bw - 24, y, TextAlignment.RIGHT);
+            }
+        }
+
+        if (g.resFinalShown) {
+            double pulse = 0.5 + 0.5 * Math.sin(g.time * 6);
+            double y = y0 + n * rowH + 92;
+            if (duel) {
+                String t = g.winner == 0 ? "BLANC GAGNE !" : (g.winner == 1 ? "NOIR GAGNE !" : "\u00c9GALIT\u00c9 !");
+                Color c = g.winner == 1 ? Color.web("#f4f4fb") : Color.hsb(50, 0.5 + 0.3 * pulse, 1);
+                if (g.winner >= 0) {
+                    gc.setFill(g.winner == 0 ? Theme.PAPER : Theme.INK);
+                    gc.fillRoundRect(Game.W / 2 - 230, y - 32, 460, 64, 32, 32);
+                    gc.setStroke(g.winner == 0 ? Theme.INK : Color.web("#f4f4fb"));
+                    gc.setLineWidth(3);
+                    gc.strokeRoundRect(Game.W / 2 - 230, y - 32, 460, 64, 32, 32);
+                    c = g.winner == 0 ? Theme.INK : Theme.PAPER;
+                }
+                Theme.center(gc, t, Game.W / 2, y, Theme.BIG, c);
+            } else if (g.newRecord) {
+                Theme.center(gc, "NOUVEAU RECORD !", Game.W / 2, y, Theme.BIG, Color.hsb(50, 0.45 + 0.4 * pulse, 1));
+            } else {
+                int best = g.campaign ? g.highScore : g.levelBest[g.level];
+                Theme.center(gc, "Record : " + best, Game.W / 2, y, Theme.MED, Theme.SOFT);
+            }
+        }
+
+        if (!g.resFinalShown) Theme.center(gc, "ESPACE : passer", Game.W / 2, 612, Theme.SMALL, Theme.DIM);
+        else Theme.center(gc, "ESPACE : continuer", Game.W / 2, 612, Theme.SMALL, blink(g, Theme.SOFT));
+    }
+
+    private void value(GraphicsContext gc, int finalVal, double prog, double x, double y, TextAlignment a) {
+        int v = (int) Math.round(finalVal * prog);
+        Color c = v < 0 ? Theme.RED : (v == 0 ? Theme.DIM : Theme.WHITE);
+        Theme.text(gc, fmt(v), x, y, Theme.MED, c, a);
+    }
+
+    private void bigValue(GraphicsContext gc, int finalVal, double prog, double pop, double x, double y, TextAlignment a) {
+        int v = (int) Math.round(finalVal * prog);
+        Color c = v < 0 ? Theme.RED : Theme.GOLD;
+        gc.save();
+        gc.translate(x, y);
+        gc.scale(pop, pop);
+        Theme.text(gc, fmt(v), 0, 0, Theme.BIG, c, a);
+        gc.restore();
     }
 }

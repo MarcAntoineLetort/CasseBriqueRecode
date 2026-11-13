@@ -95,7 +95,7 @@ public class Main extends Application {
         stage.show();
     }
 
-    /** Toutes les touches : deplacement (solo ou duel), actions, menu. */
+    /** Toutes les touches : deplacement (solo ou duel), actions, menu, informations. */
     private void onKey(Stage stage, KeyCode k, boolean down) {
         if (game.state == Game.State.MENU) {
             if (!down) return;
@@ -105,8 +105,16 @@ public class Main extends Application {
             else common(stage, k);
             return;
         }
+        if (game.state == Game.State.INFO) {
+            if (!down) return;
+            if (k == KeyCode.LEFT || k == KeyCode.PAGE_UP) game.changeInfoPage(-1);
+            else if (k == KeyCode.RIGHT || k == KeyCode.PAGE_DOWN) game.changeInfoPage(1);
+            else if (k == KeyCode.ESCAPE || k == KeyCode.M || k == KeyCode.SPACE || k == KeyCode.ENTER) game.closeInfo();
+            else common(stage, k);
+            return;
+        }
 
-        // Deplacements (relaches pris en compte dans tous les etats)
+        // Deplacements (les relachements sont pris en compte dans tous les etats)
         if (game.twoPlayer) {
             if (k == KeyCode.Z || k == KeyCode.W) game.setMove(0, -1, down);       // blanc : haut
             else if (k == KeyCode.S) game.setMove(0, 1, down);                      // blanc : bas

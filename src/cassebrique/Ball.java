@@ -6,6 +6,7 @@ final class Ball {
 
     double x, y, dx, dy;
     boolean stuck, dead;
+    double tpCooldown;  // apres une teleportation : evite de rebondir de brique en brique
     double stickOffset; // position de la balle collee, relative au centre de la raquette
     int owner;          // index du joueur qui l'a touchee en dernier (0 en solo)
     int lostSide = -1;  // duel : cote par lequel elle est sortie (0 = gauche, 1 = droite)

@@ -1,39 +1,40 @@
 package cassebrique;
 
-/** Une brique (donnees seulement). */
+/** Une brique. Les briques mobiles bougent : x et y changent. */
 final class Brick {
-    enum Kind { NORMAL, STEEL, EXPLOSIVE, GOLD, BONUS, LIGHTNING, ROCK, BUTTON, PHASE }
+    enum Kind { NORMAL, STEEL, EXPLOSIVE, GOLD, BONUS, LIGHTNING, ROCK, BUTTON, PHASE, FROST, TIME, NIGHT, MOVER, TELEPORT }
 
     private static final double[] HUES = { 190, 285, 28 };
 
     final int col, row;
-    final double x, y;
+    double x, y;
+    final double w, h;
     final Kind kind;
     final PowerUp.Type bonus; // seulement pour Kind.BONUS
     final int maxHp;
     int hp;
     boolean alive = true;
-    boolean phaseSolid; // seulement pour Kind.PHASE : true = visible et solide
+    boolean phaseSolid; // Kind.PHASE : true = visible et solide
     double flash;
+    double frost;       // secondes restantes pendant lesquelles la brique est incassable (givre)
 
-    /**
-     * Caracteres des niveaux :
-     * '1' '2' '3' normale (resistance) | '#' acier | 'X' explosive | 'G' or
-     * 'Z' foudre (colonne) | 'R' roche (ligne) | 'B' bouton
-     * 'T' brique-interrupteur visible au depart | 't' brique-interrupteur cachee au depart
-     * 'w' 'm' 's' 'f' 'c' 'u' '+' : bonus direct (large, multi, ralenti, feu, collante, mur, vie)
-     * 'r' 'n' : malus direct (raquette reduite, balle inoffensive)
-     */
-    Brick(int col, int row, double x, double y, char c) {
+    // Brique mobile : indices des points de passage (precedent, courant, cible)
+    int wpPrev = -1, wpCur = -1, wpTo = -1;
+    double pause;
+
+    /** Les caracteres des niveaux sont decrits dans Levels.java. */
+    Brick(int col, int row, double x, double y, double w, double h, char c) {
         this.col = col;
         this.row = row;
         this.x = x;
         this.y = y;
+        this.w = w;
+        this.h = h;
         PowerUp.Type b = null;
         Kind k = Kind.NORMAL;
-        int h = 1;
+        int hitPoints = 1;
         switch (c) {
-        case '1': case '2': case '3': h = c - '0'; break;
+        case '1': case '2': case '3': hitPoints = c - '0'; break;
         case '#': k = Kind.STEEL; break;
         case 'X': k = Kind.EXPLOSIVE; break;
         case 'G': k = Kind.GOLD; break;
@@ -42,31 +43,44 @@ final class Brick {
         case 'B': k = Kind.BUTTON; break;
         case 'T': k = Kind.PHASE; phaseSolid = true; break;
         case 't': k = Kind.PHASE; phaseSolid = false; break;
+        case 'I': k = Kind.FROST; break;
+        case 'H': k = Kind.TIME; break;
+        case 'N': k = Kind.NIGHT; break;
+        case 'M': k = Kind.MOVER; break;
+        case 'P': k = Kind.TELEPORT; break;
         case 'w': k = Kind.BONUS; b = PowerUp.Type.WIDE; break;
         case 'm': k = Kind.BONUS; b = PowerUp.Type.MULTI; break;
         case 's': k = Kind.BONUS; b = PowerUp.Type.SLOW; break;
         case 'f': k = Kind.BONUS; b = PowerUp.Type.FIRE; break;
         case 'c': k = Kind.BONUS; b = PowerUp.Type.STICKY; break;
-        case '+': k = Kind.BONUS; b = PowerUp.Type.LIFE; break;
         case 'u': k = Kind.BONUS; b = PowerUp.Type.WALL; break;
+        case '+': k = Kind.BONUS; b = PowerUp.Type.LIFE; break;
+        case 'g': k = Kind.BONUS; b = PowerUp.Type.GHOSTS; break;
+        case 'e': k = Kind.BONUS; b = PowerUp.Type.STAR; break;
         case 'r': k = Kind.BONUS; b = PowerUp.Type.SHRINK; break;
         case 'n': k = Kind.BONUS; b = PowerUp.Type.NOBREAK; break;
         default: break;
         }
         this.kind = k;
         this.bonus = b;
-        this.hp = h;
-        this.maxHp = h;
+        this.hp = hitPoints;
+        this.maxHp = hitPoints;
     }
 
     /** Ne peut jamais etre detruite par la balle ni par un effet. */
     boolean indestructible() {
-        return kind == Kind.STEEL || kind == Kind.BUTTON || kind == Kind.PHASE;
+        return kind == Kind.STEEL || kind == Kind.BUTTON || kind == Kind.PHASE
+                || kind == Kind.MOVER || kind == Kind.TELEPORT;
     }
 
-    /** Brique presente pour les collisions. */
+    /** Incassable pour le moment : indestructible, ou givree. */
+    boolean unbreakable() {
+        return indestructible() || frost > 0;
+    }
+
+    /** Presente pour les collisions (les teleporteurs et les interrupteurs caches se traversent). */
     boolean isSolid() {
-        return alive && (kind != Kind.PHASE || phaseSolid);
+        return alive && kind != Kind.TELEPORT && (kind != Kind.PHASE || phaseSolid);
     }
 
     double hue() {
@@ -78,6 +92,11 @@ final class Brick {
         case BUTTON: return 0;
         case PHASE: return 185;
         case STEEL: return 215;
+        case FROST: return 195;
+        case TIME: return 265;
+        case NIGHT: return 245;
+        case MOVER: return 50;
+        case TELEPORT: return 285;
         case BONUS: return bonus.hue;
         default: return HUES[Math.min(Math.max(hp, 1), 3) - 1];
         }

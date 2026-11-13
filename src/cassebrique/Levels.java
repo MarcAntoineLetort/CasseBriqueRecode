@@ -7,7 +7,10 @@ import java.util.List;
  * Tous les niveaux. Pour en ajouter : une ligne solo(...) ou duel(...) a la fin de la liste,
  * le menu cree les pages tout seul. (Les records sont memorises par nom de niveau : le nom doit etre unique.)
  *
- * Niveaux solo : 14 colonnes. Niveaux duel (2 joueurs) : 11 colonnes, jusqu'a ~16 lignes.
+ * Niveaux solo : 14 colonnes.
+ * Niveaux duel : briques verticales ; 9 lignes remplissent tout le terrain de haut en bas
+ *   (la balle ne peut passer chez l'autre que si le niveau laisse volontairement des vides) ; jusqu'a 27 colonnes.
+ *
  *  '.' vide
  *  '1' '2' '3' brique normale (nombre de coups)
  *  '#' acier indestructible          'X' explosive (detruit les 8 voisines)
@@ -15,8 +18,14 @@ import java.util.List;
  *  'Z' foudre (detruit sa colonne)   'R' roche (detruit sa ligne)
  *  'B' bouton (fait basculer les briques 'T'/'t')
  *  'T' brique indestructible visible au depart, 't' cachee au depart (elles alternent a chaque bouton)
- *  Bonus directs au contact : 'w' large  'm' multi-balles  's' ralenti  'f' boule de feu
- *                             'c' collante  'u' mur de secours  '+' vie
+ *  'I' givre (les 8 voisines deviennent incassables 10 s)
+ *  'H' temps (les briques detruites, sauf or et temps, reapparaissent)
+ *  'N' nuit (tout devient noir 8 s)
+ *  'P' teleportation (traversable, incassable ; la balle ressort d'une autre brique P)
+ *  'M' brique mobile indestructible ; 'o' balise invisible : la brique mobile fait des allers-retours entre sa
+ *      position de depart et les balises alignees avec elle (ligne ou colonne), de proche en proche
+ *  Bonus directs au contact : 'w' large  'm' multi-balles  's' ralenti  'f' boule de feu  'c' collante
+ *                             'u' mur de secours  '+' vie  'g' fantomes  'e' etoile filante
  *  Malus directs au contact : 'r' raquette reduite  'n' balle inoffensive
  */
 final class Levels {
@@ -143,30 +152,89 @@ final class Levels {
             "3333X33X333333",
             "22222222222222",
             "1G1G1G1G1G1G1G");
+        solo("Givre",
+            "11111111111111",
+            "2I22222222I222",
+            "33333333333333",
+            "3I3333X33333I3",
+            "22222222222222",
+            "1G1G1G1G1G1G1G");
+        solo("Nuit et horloge",
+            "11111111111111",
+            "11N11111H11N11",
+            "22222222222222",
+            "3333Z33333R333",
+            "22222222222222",
+            "11111111111111");
+        solo("T\u00e9l\u00e9portation",
+            "P............P",
+            "11111111111111",
+            "22222222222222",
+            "3333P333P33333",
+            "22222222222222",
+            "G.G.G.G.G.G.G.");
+        solo("Mur mobile",
+            "11111111111111",
+            "2M..........o2",
+            "33333333333333",
+            "3333X333X33333",
+            "22222222222222");
+        solo("Fant\u00f4mes et \u00e9toiles",
+            "g.e.g.e.g.e.g.",
+            "22222222222222",
+            "33333333333333",
+            "22222222222222",
+            "11111111111111");
 
         duel("Premier duel",
-            "11111111111",
-            "12222222221",
             "12333333321",
             "12333333321",
             "12333333321",
-            "12222222221",
-            "11111111111");
+            "12333333321",
+            "12333333321",
+            "12333333321",
+            "12333333321",
+            "12333333321",
+            "12333333321");
         duel("Duel explosif",
-            "11111X11111",
-            "12222222221",
-            "1X3333333X1",
-            "12333Z33321",
-            "12333333321",
-            "1X3333333X1",
-            "12222222221",
-            "11111X11111");
+            "1111X222X1111",
+            "1222222222221",
+            "12X3333333X21",
+            "123333Z333321",
+            "1233333333321",
+            "123333Z333321",
+            "12X3333333X21",
+            "1222222222221",
+            "1111X222X1111");
         duel("Duel dor\u00e9",
-            "G111111111G",
-            "12222222221",
-            "1B3333333B1",
-            "1T333R333T1",
-            "12222222221",
-            "G111111111G");
+            "G1222222222221G",
+            "113333333333311",
+            "1B3333TTT3333B1",
+            "1233333R3333321",
+            "123333tttt33321",
+            "1233333R3333321",
+            "1B3333TTT3333B1",
+            "113333333333311",
+            "G1222222222221G");
+        duel("Br\u00e8che",
+            "22222222222222222",
+            "1N11111I11111H111",
+            "11111111111111111",
+            "P...............P",
+            ".................",
+            "P...............P",
+            "11111111111111111",
+            "1111g111e1111g111",
+            "22222222222222222");
+        duel("Duel mobile",
+            "333333333333333",
+            "2M.........o222",
+            "111111111111111",
+            "222222222222222",
+            "33333X3X3333333",
+            "222222222222222",
+            "111111111111111",
+            "22o.........M22",
+            "333333333333333");
     }
 }

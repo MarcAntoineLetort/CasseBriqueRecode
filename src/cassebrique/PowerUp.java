@@ -9,11 +9,13 @@ final class PowerUp {
         FIRE("F", 25, false, 1.0),
         STICKY("C", 60, false, 1.0),
         WALL("=", 300, false, 1.0),
+        GHOSTS("G", 150, false, 0.9),
+        STAR("*", 42, false, 0.9),
         LIFE("+", 350, false, 0.4),
         SHRINK("-", 0, true, 0.8),        // malus : raquette reduite
-        NOBREAK("\u00d7", 0, true, 0.8);  // malus : la balle ne casse rien
+        NOBREAK("x", 0, true, 0.8);       // malus : la balle ne casse rien
 
-        final String label;
+        final String label; // texte de secours : l'affichage utilise des symboles (voir Art)
         final double hue;
         final boolean bad;
         final double weight; // frequence relative dans les bonus aleatoires
