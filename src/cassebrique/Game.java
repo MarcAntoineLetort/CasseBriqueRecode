@@ -1480,10 +1480,14 @@ final class Game {
             break;
         case MULTI:
             List<Ball> extra = new ArrayList<Ball>();
+            int owned = 0; // seules les balles de celui qui a ramasse le bonus sont multipliees
+            for (Ball o : balls) {
+                if (o.owner == p.index) owned++;
+            }
             for (Ball b : balls) {
-                if (b.stuck) continue;
+                if (b.stuck || b.owner != p.index) continue;
                 for (int s = -1; s <= 1; s += 2) {
-                    if (balls.size() + extra.size() >= 10) break;
+                    if (owned + extra.size() >= 10) break;
                     Ball n = new Ball();
                     n.x = b.x;
                     n.y = b.y;
