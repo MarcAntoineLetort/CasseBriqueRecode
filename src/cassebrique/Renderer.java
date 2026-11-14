@@ -711,7 +711,10 @@ final class Renderer {
         gc.fillRect(0, 0, Game.W, Game.H);
 
         Theme.center(gc, g.resultTitle, Game.W / 2, 50, Theme.BIG, Theme.GOLD);
-        if (!g.resultNote.isEmpty()) Theme.center(gc, g.resultNote, Game.W / 2, 88, Theme.SMALL, Theme.SOFT);
+        if (!g.resultNote.isEmpty()) {
+            if (g.eliminatedMask != 0) Theme.center(gc, g.resultNote, Game.W / 2, 88, Theme.SMALL_BOLD, Color.rgb(255, 150, 150));
+            else Theme.center(gc, g.resultNote, Game.W / 2, 88, Theme.SMALL, Theme.SOFT);
+        }
 
         int n = g.resLines;
         double rowH = duel ? 42 : 46;
@@ -791,12 +794,15 @@ final class Renderer {
         if (!g.resultsAllShown()) Theme.center(gc, "ESPACE : passer", Game.W / 2, 612, Theme.SMALL, Theme.DIM);
         else Theme.center(gc, "ESPACE : continuer", Game.W / 2, 612, Theme.SMALL, blink(g, Theme.SOFT));
 
-        if (g.resElimShown) drawElimination(gc, g);
+        if (g.elimBannerActive()) drawElimination(gc, g);
     }
 
     /** Duel : "X n'a plus de balles" - arrive en dernier, avec flash rouge, zoom et secousse. */
     private void drawElimination(GraphicsContext gc, Game g) {
-        double age = g.stateTime - g.resultsElimTime();
+        double age = g.stateTime - g.resultsElimStart();
+        double fade = Math.max(0, Math.min(1, (g.resultsElimEnd() - g.stateTime) / 0.3)); // disparait en fondu
+        gc.save();
+        gc.setGlobalAlpha(fade);
         double zoom = 1 + 2.4 * (1 - ease(age / 0.4));
         double flash = Math.max(0, 1 - age / 0.6);
         gc.setFill(Color.rgb(255, 0, 20, 0.40 * flash));
@@ -827,6 +833,7 @@ final class Renderer {
         }
         double a = ease((age - 0.3) / 0.4);
         Theme.center(gc, sub, Game.W / 2, 388, Theme.MED, Color.rgb(255, 205, 205, a));
+        gc.restore();
     }
 
     private void value(GraphicsContext gc, int finalVal, double prog, double x, double y, TextAlignment a) {

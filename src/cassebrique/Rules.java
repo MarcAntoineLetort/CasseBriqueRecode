@@ -43,6 +43,10 @@ final class Rules {
     static final double SERVE_DELAY = 3;     // duel : decompte avant le depart de la balle
     static final double RESPAWN_DELAY = 2;   // duel : decompte apres une balle perdue
 
+    // ---- Tableau des scores (duel)
+    static final double ELIM_BANNER_DELAY = 1.2; // pause entre le total et la banniere rouge "n'a plus de balles"
+    static final double ELIM_BANNER_TIME = 2.0;  // duree d'affichage de la banniere rouge (puis le gagnant apparait)
+
     static int lastGold(boolean duel) {
         return duel ? LAST_GOLD_DUEL : LAST_GOLD_SOLO;
     }

@@ -609,25 +609,40 @@ final class Game {
         return RES_START + resLines * RES_STEP + 0.4;
     }
 
-    double resultsEnd() {
-        return resultsTotalTime() + 1.4;
+    /** Debut et fin de la banniere rouge "n'a plus de balles" (duel) : juste apres le total. */
+    double resultsElimStart() {
+        return resultsTotalTime() + Rules.ELIM_BANNER_DELAY;
     }
 
-    /** Duel : le message "n'a plus de balles" arrive apres le gagnant, avec un gros effet. */
-    double resultsElimTime() {
-        return resultsEnd() + 1.7;
+    double resultsElimEnd() {
+        return resultsElimStart() + Rules.ELIM_BANNER_TIME;
+    }
+
+    boolean elimBannerActive() {
+        return eliminatedMask != 0 && stateTime >= resultsElimStart() && stateTime < resultsElimEnd();
+    }
+
+    /** Affichage du gagnant : juste apres le total, ou apres la disparition de la banniere rouge. */
+    double resultsFinalTime() {
+        return eliminatedMask != 0 ? resultsElimEnd() + 0.4 : resultsTotalTime() + 1.4;
     }
 
     double resultsAllEnd() {
-        return eliminatedMask != 0 ? resultsElimTime() : resultsEnd();
+        return resultsFinalTime();
     }
 
     boolean resultsAllShown() {
-        return resFinalShown && (eliminatedMask == 0 || resElimShown);
+        return resFinalShown;
     }
 
     private void skipResults() {
         stateTime = resultsAllEnd() + 0.01;
+    }
+
+    private String eliminationNote() {
+        if (eliminatedMask == 1) return "Blanc n'a plus de balles";
+        if (eliminatedMask == 2) return "Noir n'a plus de balles";
+        return "Plus de balles pour les deux joueurs";
     }
 
     private void tickResults() {
@@ -643,20 +658,23 @@ final class Game {
             play(Sfx.TOTAL);
             for (int i = 0; i < 3; i++) spawn(W / 2 + (i - 1) * 160, 450, 14, 48, 280);
         }
-        if (!resFinalShown && stateTime >= resultsEnd()) {
-            resFinalShown = true;
-            boolean celebrate = twoPlayer ? winner >= 0 : newRecord;
-            if (celebrate) {
-                play(Sfx.RECORD);
-                confetti(60);
-            }
-        }
-        if (!resElimShown && eliminatedMask != 0 && stateTime >= resultsElimTime()) {
+        // 1) duel : la banniere rouge arrive juste apres le total
+        if (!resElimShown && eliminatedMask != 0 && stateTime >= resultsElimStart()) {
             resElimShown = true;
             play(Sfx.ELIMINATION);
             shake = 22;
             spawn(W / 2, 340, 70, 0, 460);
             spawn(W / 2, 340, 40, 20, 380);
+        }
+        // 2) puis le gagnant (apres la disparition de la banniere) et, en haut, "X n'a plus de balles"
+        if (!resFinalShown && stateTime >= resultsFinalTime()) {
+            resFinalShown = true;
+            if (eliminatedMask != 0) resultNote = eliminationNote();
+            boolean celebrate = twoPlayer ? winner >= 0 : newRecord;
+            if (celebrate) {
+                play(Sfx.RECORD);
+                confetti(60);
+            }
         }
     }
 
