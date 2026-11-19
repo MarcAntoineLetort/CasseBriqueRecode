@@ -209,8 +209,7 @@ final class InfoScreen {
                 + "2. Briques sp\u00e9ciales et effets (explosion,\n    foudre, roche, fant\u00f4mes, \u00e9toile...)\n"
                 + "3. Briques d'or  4. Derni\u00e8re brique d'or\n"
                 + "5. Bonus ramass\u00e9s  6. Balles restantes\n"
-                + "7. Balle adverse perdue (duel)\n"
-                + "Puis le total, et \"nouveau record\" ou\nle gagnant.",
+                + "7. Balle adverse perdue (duel)\n",
                 510, 336, 20, PANEL_TEXT);
     }
 }
