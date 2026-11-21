@@ -28,7 +28,24 @@
   </dependencies>
 
   <build>
+    <finalName>casse-brique</finalName>
     <plugins>
+      <!-- "mvn package" (ou Run As > Maven build... > goals : clean package) copie aussi JavaFX dans target/libs -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>3.8.1</version>
+        <executions>
+          <execution>
+            <id>copy-libs</id>
+            <phase>package</phase>
+            <goals><goal>copy-dependencies</goal></goals>
+            <configuration>
+              <outputDirectory>${project.build.directory}/libs</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-compiler-plugin</artifactId>
