@@ -117,7 +117,7 @@ final class Levels {
             "..1111111111..");
         solo("R\u00e9sistantes",
             "22222222222222",
-            "11111GGGG11111",
+            "1s111GGGG111+1",
             "111111+r111111",
             "..2222222222..");
         solo("Pyramide",
@@ -168,15 +168,15 @@ final class Levels {
             "2G2G2G2G2G2G2G",
             "11111111111111",
             "..3333GG3333..");
-        solo("Interrupteurs",
-            "B............B",
+        soloFull("Interrupteurs",
+            "vG.l......e.Gc",
             "TTTT......TTTT",
-            "22222222222222",
-            "3333G33G333333",
-            "tt.tt.tt.tt.tt");
-		solo("Enfer et paradis",
+            "G222X2222X222G",
+            "X3R3G3333G3I3X",
+            "Bt+tt.tt.tt+tB");
+		soloFull("Enfer et paradis",
 			"G1N11G#mG1c1eG",
-			"3111I1n#111113",
+			"31v1I1n#111l13",
 			"Gr1r11#+w1111G",
 			"I111111#1111w1",
 			"11111r#f1+111g",
@@ -214,13 +214,15 @@ final class Levels {
             "3333Z33333R333",
             "22222222222222",
             "11111111111111");
-        solo("T\u00e9l\u00e9portation",
-            "P............P",
-            "11111111111111",
-            "22222222222222",
-            "3333P333P33333",
-            "22222222222222",
-            "G.G.G.G.G.G.G.");
+        soloFull("T\u00e9l\u00e9portation",
+        	"P.............P",
+        	"G.G.G.G.G.G.G.G",
+            "1+11m1II1u11a1",
+            "22g2r2sw2m2v22",
+            "###############",
+            "n333P3333X333l",
+            "2a2w22+s22u2+2"
+            );
         solo("Mur mobile",
             "11111111111111",
             "2M..........o2",
