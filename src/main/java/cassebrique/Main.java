@@ -126,7 +126,7 @@ public class Main extends Application {
         }
         if (game.state == Game.State.NET) { // ici le clavier sert a taper l'adresse : seules quelques touches agissent
             if (!down) return;
-            if (k == KeyCode.ESCAPE || k == KeyCode.ENTER || k == KeyCode.BACK_SPACE) game.netKey(k.getName().toUpperCase().replace(' ', '_'));
+            if (k == KeyCode.ESCAPE || k == KeyCode.ENTER || k == KeyCode.BACK_SPACE || k == KeyCode.DELETE) game.netKey(k.name());
             else if (k == KeyCode.V && e.isShortcutDown()) game.paste(Clipboard.getSystemClipboard().getString());
             else if (k == KeyCode.F11) stage.setFullScreen(!stage.isFullScreen());
             return;

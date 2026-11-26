@@ -4,7 +4,12 @@ package cassebrique;
 final class Brick {
     enum Kind { NORMAL, STEEL, EXPLOSIVE, GOLD, BONUS, LIGHTNING, ROCK, BUTTON, PHASE, FROST, TIME, NIGHT, MOVER, TELEPORT, MALUS, RAINBOW, SWAP }
 
-    private static final double[] HUES = { 190, 285, 28 };
+    /** Decor de la partie en cours (0 espace, 1 Mars, 2 aurore, 3 ocean) : choisit la teinte des briques normales. */
+    static int theme;
+    static final double[] NORMAL_HUE = { 225, 172, 275, 12 };
+    static final double[] NORMAL_SAT = { 0.50, 0.42, 0.40, 0.42 };
+    static final double SAT_STEP = 0.15;                              // les teintes foncees restent bien colorees (pas de gris)
+    static final double[] NORMAL_BRIGHT = { 0.98, 0.76, 0.56 };       // 1, 2 et 3 coups : de plus en plus sombre
 
     final int col, row;
     double x, y;
@@ -21,6 +26,7 @@ final class Brick {
     Object fxSprite;       // image pre-calculee de l'aspect fixe de la brique (Art)
     int fxSpriteHp = -1;
     int fxEpoch = -1;
+    int fxTheme = -1;
     double frost;       // secondes restantes pendant lesquelles la brique est incassable (givre)
 
     // Brique mobile : indices des points de passage (precedent, courant, cible)
@@ -111,7 +117,7 @@ final class Brick {
         case RAINBOW: return 320;
         case SWAP: return 0;
         case BONUS: return bonus.hue;
-        default: return HUES[Math.min(Math.max(hp, 1), 3) - 1];
+        default: return NORMAL_HUE[theme];
         }
     }
 }

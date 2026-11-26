@@ -25,7 +25,9 @@ final class Renderer {
 
         boolean menuLike = g.state == Game.State.MENU || g.state == Game.State.INFO || g.state == Game.State.NET;
         boolean duel = g.twoPlayer && !menuLike;
+        Brick.theme = menuLike ? 0 : g.theme; // teinte des briques normales selon le decor
         Art.setSpriteScale(s);
+        if (menuLike) backgrounds.warmUp(s);
         backgrounds.draw(gc, g.time, menuLike ? 0 : g.theme, duel, s);
 
         switch (g.state) {
@@ -100,29 +102,41 @@ final class Renderer {
     }
 
     /** Nuit : tout est noir sauf raquettes, balles, effets et briques qui viennent de disparaitre. */
-    /** Arc-en-ciel droit entre deux briques arc-en-ciel : bandes colorees qui s'effacent. */
+    /** Arc-en-ciel droit entre deux briques arc-en-ciel : bandes translucides entourees d'un halo diffus qui s'efface. */
     private void drawRainbow(GraphicsContext gc, Rainbow r) {
         double f = r.life / Rainbow.MAX_LIFE;                    // 1 -> 0
-        double grow = Math.min(1, (1 - f) * 6);                  // le trait se deploie vite
-        double a = Math.min(1, f * 2.2);
+        double grow = Math.min(1, (1 - f) * 5);                  // le trait se deploie vite
+        double a = Math.min(1, f * 1.8);
         double dx = r.x2 - r.x1, dy = r.y2 - r.y1, len = Math.hypot(dx, dy);
         if (len < 1) return;
         double nx = -dy / len, ny = dx / len; // normale
         double ex = r.x1 + dx * grow, ey = r.y1 + dy * grow;
         int bands = 7;
-        double bw = 3.2 * (0.6 + 0.4 * f);
-        gc.setLineCap(javafx.scene.shape.StrokeLineCap.BUTT);
-        gc.setGlobalAlpha(a * 0.28);
-        gc.setStroke(Color.WHITE);
-        gc.setLineWidth(bands * bw + 8);
-        gc.strokeLine(r.x1, r.y1, ex, ey);
-        gc.setGlobalAlpha(a);
-        gc.setLineWidth(bw + 0.6);
-        for (int i = 0; i < bands; i++) {
-            double off = (i - (bands - 1) / 2.0) * bw;
-            gc.setStroke(Color.hsb(i * 50.0, 0.9, 1));
-            gc.strokeLine(r.x1 + nx * off, r.y1 + ny * off, ex + nx * off, ey + ny * off);
+        double bw = 3.6 * (0.7 + 0.3 * f);
+        double core = bands * bw;
+        gc.setLineCap(javafx.scene.shape.StrokeLineCap.ROUND);
+        // halo : plusieurs couches larges, tres transparentes, de plus en plus diffuses
+        for (int i = 5; i >= 1; i--) {
+            gc.setGlobalAlpha(a * 0.045);
+            gc.setStroke(Color.hsb(Art.hue(r.life * 300 + i * 50), 0.35, 1));
+            gc.setLineWidth(core + i * 9);
+            gc.strokeLine(r.x1, r.y1, ex, ey);
         }
+        gc.setLineCap(javafx.scene.shape.StrokeLineCap.BUTT);
+        // bandes de couleur : une passe large et floue, puis une passe plus nette, toutes deux translucides
+        for (int pass = 0; pass < 2; pass++) {
+            gc.setGlobalAlpha(a * (pass == 0 ? 0.22 : 0.55));
+            gc.setLineWidth(bw * (pass == 0 ? 1.9 : 1.05));
+            for (int i = 0; i < bands; i++) {
+                double off = (i - (bands - 1) / 2.0) * bw;
+                gc.setStroke(Color.hsb(i * 48.0, 0.8, 1));
+                gc.strokeLine(r.x1 + nx * off, r.y1 + ny * off, ex + nx * off, ey + ny * off);
+            }
+        }
+        gc.setGlobalAlpha(a * 0.35); // coeur lumineux
+        gc.setStroke(Color.WHITE);
+        gc.setLineWidth(bw * 1.1);
+        gc.strokeLine(r.x1, r.y1, ex, ey);
         gc.setGlobalAlpha(1);
     }
 

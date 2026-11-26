@@ -42,7 +42,10 @@ final class Art {
         case MALUS: return Color.web("#f2e41c");
         case SWAP: return Color.web("#f4f4fb");
         case BONUS: return k.bonus.bad ? Color.web("#3a1018") : Color.hsb(k.bonus.hue, 0.8, 0.95);
-        default: return Color.hsb(k.hue(), 0.75, 0.95);
+        default: {
+            int h = Math.min(Math.max(k.hp, 1), 3);
+            return Color.hsb(k.hue(), Math.min(1, Brick.NORMAL_SAT[Brick.theme] + (h - 1) * Brick.SAT_STEP), Brick.NORMAL_BRIGHT[h - 1]);
+        }
         }
     }
 
@@ -67,6 +70,7 @@ final class Art {
 
     /** Adapte la definition des sprites de briques a la taille de la fenetre (les refait seulement si elle change vraiment). */
     static void setSpriteScale(double winScale) {
+        spriteBudget = 2;
         double sc = Backgrounds.scaleClass(winScale) == 0 ? 1.0 : (Backgrounds.scaleClass(winScale) == 1 ? 1.5 : 2.0);
         if (sc != sprScale) {
             sprScale = sc;
@@ -75,11 +79,19 @@ final class Art {
         }
     }
 
+    private static int spriteBudget = 2;
+
+    /**
+     * Sprite d'une brique, ou null s'il n'est pas encore pret : on n'en fabrique que quelques-uns par image
+     * (le reste est dessine directement en attendant) pour ne jamais figer l'affichage a l'arrivee d'un niveau.
+     */
     private static Image sprite(Brick k) {
-        if (k.fxSprite != null && k.fxSpriteHp == k.hp && k.fxEpoch == sprEpoch) return (Image) k.fxSprite;
-        String key = k.kind + "|" + k.hp + "|" + k.bonus + "|" + (int) (k.w * 10) + "|" + (int) (k.h * 10);
+        if (k.fxSprite != null && k.fxSpriteHp == k.hp && k.fxEpoch == sprEpoch && k.fxTheme == Brick.theme) return (Image) k.fxSprite;
+        String key = k.kind + "|" + k.hp + "|" + k.bonus + "|" + (int) (k.w * 10) + "|" + (int) (k.h * 10) + "|" + Brick.theme;
         Image im = SPRITES.get(key);
         if (im == null) {
+            if (spriteBudget <= 0) return null;
+            spriteBudget--;
             Canvas c = new Canvas(Math.ceil((k.w + 2 * SPR_PAD) * sprScale), Math.ceil((k.h + 2 * SPR_PAD) * sprScale));
             GraphicsContext g2 = c.getGraphicsContext2D();
             g2.scale(sprScale, sprScale);
@@ -95,14 +107,18 @@ final class Art {
         k.fxSprite = im;
         k.fxSpriteHp = k.hp;
         k.fxEpoch = sprEpoch;
+        k.fxTheme = Brick.theme;
         return im;
     }
 
     static void brick(GraphicsContext gc, Brick k, double t) {
         if (k.flash <= 0 && k.frost <= 0 && fixedLook(k.kind)) {
-            gc.drawImage(sprite(k), k.x - SPR_PAD, k.y - SPR_PAD, k.w + 2 * SPR_PAD, k.h + 2 * SPR_PAD);
-            if (k.kind == Brick.Kind.GOLD) goldSparkle(gc, k, t);
-            return;
+            Image im = sprite(k);
+            if (im != null) {
+                gc.drawImage(im, k.x - SPR_PAD, k.y - SPR_PAD, k.w + 2 * SPR_PAD, k.h + 2 * SPR_PAD);
+                if (k.kind == Brick.Kind.GOLD) goldSparkle(gc, k, t);
+                return;
+            }
         }
         drawLive(gc, k, t);
     }
@@ -137,11 +153,12 @@ final class Art {
         double cx = x + w / 2, cy = y + h / 2 - 1;
         double arc = Math.min(8, Math.min(w, h) / 2.5);
 
-        if (k.fxBase == null || k.fxHp != k.hp) { // la couleur ne change que si les points de vie changent
+        if (k.fxBase == null || k.fxHp != k.hp || k.fxTheme != Brick.theme) { // la couleur ne change que si les points de vie changent
             Color b0 = baseColor(k);
             k.fxBase = b0;
             k.fxDark = b0.darker().darker();
             k.fxHp = k.hp;
+            k.fxTheme = Brick.theme;
         }
         Color base = (Color) k.fxBase, dark = (Color) k.fxDark;
         if (k.flash > 0) {
@@ -233,14 +250,17 @@ final class Art {
             gc.fillOval(cx - 2, cy - 2, 4, 4);
             break;
         }
-        case TIME: { // horloge avec fleche de retour
+        case TIME: { // sablier
             gc.setStroke(Color.WHITE);
-            gc.setLineWidth(2);
-            gc.strokeOval(cx - 8, cy - 8, 16, 16);
-            gc.strokeLine(cx, cy, cx, cy - 5);
-            gc.strokeLine(cx, cy, cx + 4, cy + 1);
-            gc.setFill(Color.WHITE);
-            gc.fillPolygon(new double[] { cx - 11, cx - 5, cx - 11 }, new double[] { cy - 6, cy - 5, cy - 1 }, 3);
+            gc.setLineWidth(1.8);
+            gc.strokeLine(cx - 6.5, cy - 8, cx + 6.5, cy - 8);
+            gc.strokeLine(cx - 6.5, cy + 8, cx + 6.5, cy + 8);
+            gc.strokePolyline(new double[] { cx - 5, cx - 5, cx, cx - 5, cx - 5 }, new double[] { cy - 8, cy - 5, cy, cy + 5, cy + 8 }, 5);
+            gc.strokePolyline(new double[] { cx + 5, cx + 5, cx, cx + 5, cx + 5 }, new double[] { cy - 8, cy - 5, cy, cy + 5, cy + 8 }, 5);
+            gc.setFill(Color.web("#ffe9a8"));
+            gc.fillPolygon(new double[] { cx - 3.6, cx + 3.6, cx }, new double[] { cy - 6, cy - 6, cy - 1 }, 3);
+            gc.fillPolygon(new double[] { cx - 4, cx + 4, cx }, new double[] { cy + 7, cy + 7, cy + 2.5 }, 3);
+            gc.fillRect(cx - 0.6, cy - 0.5, 1.2, 5);
             break;
         }
         case NIGHT: { // croissant de lune
@@ -347,24 +367,16 @@ final class Art {
         double x = k.x, y = k.y, w = k.w, h = k.h;
         double cx = x + w / 2, cy = y + h / 2;
         double arc = Math.min(10, Math.min(w, h) / 2.2);
-        gc.setFill(Color.rgb(255, 255, 255, 0.14));
+        gc.setFill(Color.hsb(hue(t * 230 + 180), 0.55, 1, 0.20));
         gc.fillRoundRect(x, y, w, h, arc, arc);
-        gc.setStroke(Color.hsb(hue(t * 90), 0.55, 1, 0.95));
+        gc.setStroke(Color.hsb(hue(t * 230), 0.65, 1, 0.95));
         gc.setLineWidth(2);
         gc.strokeRoundRect(x + 1, y + 1, w - 2, h - 2, arc, arc);
         for (int i = 0; i < 2; i++) {
-            double ph = (t * 0.8 + i / 2.0) % 1.0;
+            double ph = (t * 1.1 + i / 2.0) % 1.0;
             double rw = (w / 2 - 3) * (1 - ph), rh = (h / 2 - 3) * (1 - ph);
-            gc.setStroke(Color.hsb(hue(t * 120 + i * 180), 0.5, 1, 0.2 + 0.7 * (1 - ph)));
+            gc.setStroke(Color.hsb(hue(t * 260 + i * 180), 0.55, 1, 0.2 + 0.7 * (1 - ph)));
             gc.strokeOval(cx - rw, cy - rh, rw * 2, rh * 2);
-        }
-        double r0 = Math.min(w, h) * 0.36;
-        gc.setLineWidth(2);
-        for (int i = 0; i < 4; i++) {
-            double r = r0 - i * 2.1;
-            if (r <= 1) break;
-            gc.setStroke(Color.hsb(i * 48, 0.85, 1));
-            gc.strokeArc(cx - r, cy - r + r0 * 0.45, 2 * r, 2 * r, 0, 180, ArcType.OPEN);
         }
     }
 

@@ -1,1 +1,15 @@
+# Maven
 target/
+
+# Eclipse
+.metadata/
+bin/
+*.launch
+
+# IntelliJ
+.idea/
+*.iml
+
+# Fichiers système
+.DS_Store
+Thumbs.db

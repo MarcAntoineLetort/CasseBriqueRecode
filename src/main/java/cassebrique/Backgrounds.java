@@ -37,8 +37,13 @@ final class Backgrounds {
     private final LinearGradient duelRight = new LinearGradient(0, 0, 1, 0, true, CycleMethod.NO_CYCLE,
             new Stop(0, Color.rgb(20, 0, 50, 0)), new Stop(1, Color.rgb(20, 0, 50, 0.50)));
 
-    private final Image blobBlue, blobViolet, curtainA;
-    private final Image[] duelBase = new Image[3], mars = new Image[3], aurora = new Image[3];
+    private final Image blobBlue, blobViolet, curtainA, glowCyan, glowPink, glowGreen;
+    private final Image[] duelBase = new Image[3], mars = new Image[3], aurora = new Image[3], ocean = new Image[3];
+
+    private static final double HZ = 330; // horizon de l'ocean
+    private static final int BIO = 38;
+    private final double[] bioX = new double[BIO], bioY = new double[BIO], bioP = new double[BIO], bioS = new double[BIO];
+    private final Color[] waveColors = new Color[9];
 
     private final double[] starX = new double[90], starY = new double[90], starS = new double[90];
     private final double[] star2X = new double[70], star2Y = new double[70], star2S = new double[70];
@@ -55,6 +60,20 @@ final class Backgrounds {
             star2X[i] = r2.nextDouble() * W;
             star2Y[i] = r2.nextDouble() * H;
             star2S[i] = 1.2 + r2.nextDouble() * 2.2;
+        }
+        glowCyan = sprite(13, Color.rgb(90, 255, 235, 0.95));
+        glowPink = sprite(13, Color.rgb(255, 110, 230, 0.95));
+        glowGreen = sprite(13, Color.rgb(150, 255, 120, 0.95));
+        Random r3 = new Random(99);
+        for (int i = 0; i < BIO; i++) {
+            bioX[i] = 20 + r3.nextDouble() * (W - 40);
+            bioY[i] = HZ + 40 + r3.nextDouble() * (H - HZ - 70);
+            bioP[i] = r3.nextDouble() * 6.28;
+            bioS[i] = 0.5 + r3.nextDouble() * 1.4;
+        }
+        for (int i = 0; i < waveColors.length; i++) {
+            double f = i / 8.0;
+            waveColors[i] = Color.rgb(130, 255, 240, 0.07 + 0.10 * f);
         }
         blobBlue = sprite(330, Color.rgb(90, 150, 255, 0.14));
         blobViolet = sprite(330, Color.rgb(200, 90, 255, 0.12));
@@ -97,6 +116,26 @@ final class Backgrounds {
             });
         }
         return mars[cls];
+    }
+
+    private Image ocean(int cls) {
+        if (ocean[cls] == null) {
+            ocean[cls] = render(W, H, cls, new Painter() {
+                public void paint(GraphicsContext gc) {
+                    paintOcean(gc);
+                }
+            });
+        }
+        return ocean[cls];
+    }
+
+    /** Fabrique, a raison d'une image par appel, les decors pas encore prets (appele pendant le menu : aucun a-coup en jeu). */
+    void warmUp(double winScale) {
+        int cls = scaleClass(winScale);
+        if (mars[cls] == null) mars(cls);
+        else if (aurora[cls] == null) aurora(cls);
+        else if (ocean[cls] == null) ocean(cls);
+        else if (duelBase[cls] == null) duelBase(cls);
     }
 
     private Image aurora(int cls) {
@@ -264,6 +303,92 @@ final class Backgrounds {
         blob(gc, W * 0.5, 600, 380, Color.rgb(60, 255, 170, 0.07));
     }
 
+    /** Ocean d'une planete inconnue, de nuit : grosse planete a anneaux, petite lune, eau sombre aux reflets roses et turquoise. */
+    private static void paintOcean(GraphicsContext gc) {
+        gc.setFill(new LinearGradient(0, 0, 0, HZ, false, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#05030f")), new Stop(0.55, Color.web("#1a0c38")), new Stop(1, Color.web("#12505c"))));
+        gc.fillRect(0, 0, W, HZ);
+        Random r = new Random(31);
+        for (int i = 0; i < 210; i++) {
+            gc.setFill(Color.rgb(240, 235, 255, 0.15 + 0.6 * r.nextDouble() * r.nextDouble()));
+            double s = 0.6 + r.nextDouble() * 1.4;
+            gc.fillOval(r.nextDouble() * W, r.nextDouble() * (HZ - 10), s, s);
+        }
+        blob(gc, 235, HZ, 430, Color.rgb(255, 120, 220, 0.20));
+        blob(gc, 720, HZ, 380, Color.rgb(60, 230, 200, 0.14));
+
+        // petite lune verte
+        blob(gc, 770, 120, 95, Color.rgb(160, 255, 225, 0.16));
+        gc.setFill(new RadialGradient(225, 0.5, 770, 120, 24, false, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#e6fff4")), new Stop(1, Color.web("#5ea896"))));
+        gc.fillOval(746, 96, 48, 48);
+        gc.setFill(Color.rgb(40, 90, 80, 0.35));
+        gc.fillOval(758, 108, 9, 7);
+        gc.fillOval(774, 122, 12, 9);
+        gc.fillOval(756, 126, 6, 5);
+
+        // aiguilles rocheuses a l'horizon
+        gc.setFill(Color.web("#090418"));
+        double[] spx = { 560, 590, 612, 640, 668, 690, 720, 760, 800, 845, 880 };
+        double[] sph = { 22, 54, 30, 70, 26, 44, 18, 62, 28, 40, 20 };
+        for (int i = 0; i < spx.length; i++) {
+            gc.fillPolygon(new double[] { spx[i] - 9, spx[i], spx[i] + 9 }, new double[] { HZ + 2, HZ - sph[i], HZ + 2 }, 3);
+        }
+
+        // grosse planete annelee (anneaux inclines : moitie arriere, planete, moitie avant)
+        double pcx = 235, pcy = 205, pr = 100;
+        gc.save();
+        gc.translate(pcx, pcy);
+        gc.rotate(-18);
+        double[][] rings = { { 205, 46, 7, 0.30 }, { 172, 38, 4, 0.40 }, { 232, 54, 3, 0.22 } };
+        for (double[] rg : rings) {
+            gc.setStroke(Color.rgb(255, 200, 250, rg[3]));
+            gc.setLineWidth(rg[2]);
+            gc.strokeArc(-rg[0], -rg[1], 2 * rg[0], 2 * rg[1], 0, 180, javafx.scene.shape.ArcType.OPEN);
+        }
+        gc.restore();
+        gc.setFill(new RadialGradient(225, 0.55, pcx, pcy, pr, false, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#ffc2ff")), new Stop(0.5, Color.web("#b552d8")), new Stop(1, Color.web("#2d0d5c"))));
+        gc.fillOval(pcx - pr, pcy - pr, 2 * pr, 2 * pr);
+        gc.save();
+        gc.beginPath();
+        gc.arc(pcx, pcy, pr, pr, 0, 360);
+        gc.closePath();
+        gc.clip();
+        for (int i = 0; i < 9; i++) { // bandes
+            gc.setStroke(i % 2 == 0 ? Color.rgb(255, 225, 255, 0.16) : Color.rgb(70, 20, 120, 0.20));
+            gc.setLineWidth(5 + (i % 3) * 3);
+            double yy = pcy - pr + 14 + i * 22;
+            gc.strokeLine(pcx - pr, yy, pcx + pr, yy + 8);
+        }
+        gc.setFill(new RadialGradient(0, 0, pcx - 40, pcy - 45, 2.1 * pr, false, CycleMethod.NO_CYCLE, // ombre douce, cote nuit
+                new Stop(0, Color.rgb(5, 0, 25, 0)), new Stop(0.5, Color.rgb(5, 0, 25, 0)), new Stop(1, Color.rgb(5, 0, 25, 0.70))));
+        gc.fillRect(pcx - pr, pcy - pr, 2 * pr, 2 * pr);
+        gc.restore();
+        gc.save();
+        gc.translate(pcx, pcy);
+        gc.rotate(-18);
+        for (double[] rg : rings) { // moitie avant des anneaux, devant la planete
+            gc.setStroke(Color.rgb(255, 205, 250, rg[3] + 0.28));
+            gc.setLineWidth(rg[2]);
+            gc.strokeArc(-rg[0], -rg[1], 2 * rg[0], 2 * rg[1], 180, 180, javafx.scene.shape.ArcType.OPEN);
+        }
+        gc.restore();
+
+        // l'ocean
+        gc.setFill(new LinearGradient(0, HZ, 0, H, false, CycleMethod.NO_CYCLE,
+                new Stop(0, Color.web("#0e5f6b")), new Stop(0.22, Color.web("#0a3a4f")), new Stop(1, Color.web("#020c15"))));
+        gc.fillRect(0, HZ, W, H - HZ);
+        gc.save(); // reflet allonge de la planete
+        gc.translate(pcx, HZ);
+        gc.scale(0.5, 2.7);
+        blob(gc, 0, 0, 125, Color.rgb(255, 150, 235, 0.30));
+        gc.restore();
+        gc.setStroke(Color.rgb(170, 255, 240, 0.38));
+        gc.setLineWidth(1.5);
+        gc.strokeLine(0, HZ, W, HZ);
+    }
+
     private static double[] concat(double[] a, double[] b) {
         double[] r = new double[a.length + b.length];
         System.arraycopy(a, 0, r, 0, a.length);
@@ -305,6 +430,11 @@ final class Backgrounds {
             stars(gc, t, 55, 0.55);
             auroraCurtains(gc, t);
             break;
+        case 3:
+            gc.drawImage(ocean(cls), 0, 0, W, H);
+            stars(gc, t, 45, 0.7, HZ - 10);
+            oceanLive(gc, t);
+            break;
         default:
             if (duel) classicDuel(gc, t, cls);
             else {
@@ -318,9 +448,13 @@ final class Backgrounds {
     }
 
     private void stars(GraphicsContext gc, double t, int n, double strength) {
+        stars(gc, t, n, strength, H);
+    }
+
+    private void stars(GraphicsContext gc, double t, int n, double strength, double maxY) {
         gc.setFill(Color.WHITE);
         for (int i = 0; i < n; i++) {
-            double y = (starY[i] + t * 6 * starS[i]) % H;
+            double y = (starY[i] * maxY / H + t * 6 * starS[i]) % maxY;
             gc.setGlobalAlpha((0.25 + 0.5 * Math.abs(Math.sin(t * starS[i] + i))) * strength);
             gc.fillOval(starX[i], y, starS[i], starS[i]);
         }
@@ -358,6 +492,40 @@ final class Backgrounds {
             gc.setFill(Color.rgb(255, 255, 255, (1 - ph) * (1 - i / 12.0)));
             gc.fillOval(sx + f * 280 - 2, sy + f * 170 - 2, 4 - i * 0.2, 4 - i * 0.2);
         }
+    }
+
+    /** Ocean : vagues qui ondulent, scintillement sous la planete, plancton lumineux. */
+    private void oceanLive(GraphicsContext gc, double t) {
+        int n = 36;
+        double[] xs = new double[n], ys = new double[n];
+        for (int i = 0; i < 9; i++) {
+            double f = i / 8.0;
+            double y0 = HZ + 12 + (H - HZ - 30) * Math.pow(f, 1.8);
+            double amp = 1.2 + 6.5 * f, k = 0.05 - 0.028 * f;
+            for (int j = 0; j < n; j++) {
+                double x = j * W / (n - 1);
+                xs[j] = x;
+                ys[j] = y0 + amp * Math.sin(x * k + t * (0.7 + f) + i * 1.7);
+            }
+            gc.setStroke(waveColors[i]);
+            gc.setLineWidth(1 + 2.2 * f);
+            gc.strokePolyline(xs, ys, n);
+        }
+        for (int j = 0; j < 16; j++) { // reflet qui scintille sous la planete
+            double yy = HZ + 6 + j * j * 0.95;
+            double hw = 10 + j * 4.2, cx = 235 + Math.sin(t * 1.3 + j) * (5 + j * 1.6);
+            gc.setStroke(Color.rgb(255, 170, 240, 0.08 + 0.20 * Math.abs(Math.sin(t * 2 + j * 1.7))));
+            gc.setLineWidth(1.4 + j * 0.13);
+            gc.strokeLine(cx - hw, yy, cx + hw, yy);
+        }
+        for (int i = 0; i < BIO; i++) { // plancton phosphorescent
+            double a = Math.sin(t * bioS[i] + bioP[i]);
+            if (a <= 0) continue;
+            gc.setGlobalAlpha(0.12 + 0.75 * a * a);
+            Image g = i % 3 == 0 ? glowPink : (i % 3 == 1 ? glowCyan : glowGreen);
+            gc.drawImage(g, bioX[i] + 6 * Math.sin(t * 0.3 + bioP[i]) - 13, bioY[i] - 13);
+        }
+        gc.setGlobalAlpha(1);
     }
 
     /** Phobos : petit rocher gris qui traverse tres lentement le ciel de Mars. */

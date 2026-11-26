@@ -51,6 +51,9 @@ final class NetSession {
     private final ByteArrayOutputStream evBuf = new ByteArrayOutputStream();
     private final DataOutputStream ev = new DataOutputStream(evBuf);
     private int evCount;
+    private byte[] lastBricks = new byte[0];
+    private int snapCount;
+    volatile int lastSnapBytes;       // diagnostic : taille de la derniere image envoyee
 
     NetSession(Game game) {
         this.game = game;
@@ -159,6 +162,7 @@ final class NetSession {
 
     private void attach(Socket s, final int gen) throws IOException {
         s.setTcpNoDelay(true);
+        s.setSendBufferSize(16384); // petit tampon : si le reseau est lent, on saute des images au lieu d'accumuler du retard
         s.setSoTimeout(READ_TIMEOUT_MS);
         socket = s;
         final DataInputStream in = new DataInputStream(s.getInputStream());
@@ -562,9 +566,17 @@ final class NetSession {
                 d.writeByte(p.serveSecond);
             }
             d.writeShort(g.bricks.size());
+            // etat des briques : envoye seulement quand il change (et en entier une fois toutes les 2 s, par securite)
+            byte[] bb = new byte[g.bricks.size() * 2];
+            int bi = 0;
             for (Brick k : g.bricks) {
-                d.writeByte((k.alive ? 1 : 0) | (k.phaseSolid ? 2 : 0) | (Math.min(3, Math.max(0, k.hp)) << 2));
-                d.writeByte((int) Math.min(255, Math.max(0, k.frost * 10)));
+                bb[bi++] = (byte) ((k.alive ? 1 : 0) | (k.phaseSolid ? 2 : 0) | (Math.min(3, Math.max(0, k.hp)) << 2));
+                bb[bi++] = (byte) Math.min(255, Math.max(0, Math.round(k.frost * 2))); // givre : pas de 0,5 s
+            }
+            boolean fullBricks = !java.util.Arrays.equals(bb, lastBricks) || snapCount % 120 == 0;
+            d.writeBoolean(fullBricks);
+            if (fullBricks) d.write(bb);
+            for (Brick k : g.bricks) {
                 if (k.kind == Brick.Kind.MOVER) {
                     d.writeFloat((float) k.x);
                     d.writeFloat((float) k.y);
@@ -611,11 +623,16 @@ final class NetSession {
             }
             ev.flush();
             d.writeShort(evCount);
-            byte[] evb = evBuf.toByteArray();
-            d.write(evb);
-            evBuf.reset();
-            evCount = 0;
-            if (outbox.size() < 6) send(bo.toByteArray()); // reseau lent : on saute des images plutot que de s'accumuler
+            d.write(evBuf.toByteArray());
+            if (outbox.size() < 6) { // reseau lent : on saute des images plutot que de s'accumuler
+                byte[] msg = bo.toByteArray();
+                send(msg);
+                lastSnapBytes = msg.length;
+                lastBricks = bb;            // seulement si l'image est partie : le delta reste coherent
+                snapCount++;
+                evBuf.reset();              // les evenements (sons...) d'une image sautee sont gardes pour la suivante
+                evCount = 0;
+            }
         } catch (IOException e) {
             // ne peut pas arriver (flux en memoire)
         }
@@ -654,18 +671,24 @@ final class NetSession {
             p.serveTimer = d.readFloat();
             p.serveSecond = d.readUnsignedByte();
         }
+        g.snapAge = 0;
         int nk = d.readUnsignedShort();
         if (nk != g.bricks.size()) return; // niveau different : image ignoree
+        boolean full = d.readBoolean();
+        if (full) {
+            for (Brick k : g.bricks) {
+                int f = d.readUnsignedByte();
+                int hp = (f >> 2) & 3;
+                boolean alive = (f & 1) != 0;
+                if (alive && k.alive && hp < k.hp) k.flash = 0.15;
+                if (alive != k.alive || (f & 2) != 0 != k.phaseSolid) k.flash = Math.max(k.flash, 0.3);
+                k.alive = alive;
+                k.phaseSolid = (f & 2) != 0;
+                k.hp = hp;
+                k.frost = d.readUnsignedByte() / 2.0;
+            }
+        }
         for (Brick k : g.bricks) {
-            int f = d.readUnsignedByte();
-            int hp = (f >> 2) & 3;
-            boolean alive = (f & 1) != 0;
-            if (alive && k.alive && hp < k.hp) k.flash = 0.15;
-            if (alive != k.alive || (f & 2) != 0 != k.phaseSolid) k.flash = Math.max(k.flash, 0.3);
-            k.alive = alive;
-            k.phaseSolid = (f & 2) != 0;
-            k.hp = hp;
-            k.frost = d.readUnsignedByte() / 10.0;
             if (k.kind == Brick.Kind.MOVER) {
                 k.x = d.readFloat();
                 k.y = d.readFloat();

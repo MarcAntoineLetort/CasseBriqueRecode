@@ -14,7 +14,7 @@ final class Rules {
     static final int GOLD_POINTS = 150;      // brique d'or
     static final int LAST_GOLD_SOLO = 500;   // derniere brique d'or du niveau, en solo
     static final int LAST_GOLD_DUEL = 200;   // derniere brique d'or du niveau, en duel
-    static final int CATCH_BONUS = 50;       // bonus ramasse (pas les malus)
+    static final int CATCH_BONUS = 20;       // bonus ramasse (pas les malus)
     static final int BALL_BONUS = 150;       // par balle restante a la fin (un peu plus que la penalite du duel)
     static final int DUEL_PENALTY = 100;     // duel : points perdus quand la balle adverse sort chez moi
     static final int LIFE_POINTS = 0;        // (reserve)

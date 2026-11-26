@@ -5,6 +5,13 @@
   Eclipse : *Import > Existing Maven Projects*. Sans Maven : télécharger le SDK JavaFX 21 (gluonhq.com/products/javafx)
   et ajouter aux VM arguments : `--module-path "C:\javafx-sdk-21\lib" --add-modules javafx.controls,javafx.media`
   (classe principale `cassebrique.Main`).
+  Depuis amélioration du pom :
+	-Clic droit sur ton projet casse-brique (et non sur la classe Main).
+	-Sélectionne Run As > Maven build....
+	-Dans l'onglet Main, repère le champ Goals
+	-Saisis simplement : javafx:run
+	-Dans l'onglet JRE, vérifie que tu utilises bien ton JDK 21.
+	-Clique sur Run.
 - **Tes fichiers .wav existants** : les mettre dans `src/main/resources/cassebrique/sounds/` (3 nouveaux sons fournis :
   `rainbow.wav`, `swap.wav`, `lava.wav`, simples à remplacer).
 

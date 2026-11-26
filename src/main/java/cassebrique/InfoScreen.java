@@ -165,7 +165,7 @@ final class InfoScreen {
 
     private static void bricks(GraphicsContext gc, double t, int page) {
         Object[][] all = {
-            { '2', "Normale", "1 \u00e0 3 coups : la couleur indique la r\u00e9sistance" },
+            { '2', "Normale", "1 \u00e0 3 coups : plus elle est fonc\u00e9e,\nplus elle r\u00e9siste" },
             { '#', "Acier", "indestructible" },
             { 'X', "Explosive", "d\u00e9truit les 8 briques voisines" },
             { 'G', "Or", "vaut " + Rules.GOLD_POINTS + " points ; le niveau s'arr\u00eate quand tout\nl'or est pris (derni\u00e8re : +" + Rules.LAST_GOLD_SOLO
@@ -181,7 +181,7 @@ final class InfoScreen {
             { 'P', "T\u00e9l\u00e9portation", "traversable : la balle ressort d'un\nautre t\u00e9l\u00e9porteur, avec son \u00e9lan" },
             { 'a', "Arc-en-ciel", "comme la t\u00e9l\u00e9portation, mais les deux\nbriques utilis\u00e9es disparaissent (arc-en-ciel)" },
             { 'y', "Malus jaune (duel)", "t\u00eate de mort : une fois cass\u00e9e, un malus\npour l'ADVERSAIRE (jaune vif, pas l'or !)" },
-            { 'x', "\u00c9change (duel)", "noir et blanc : les balles changent de\ncamp ; qui n'en a plus attend " + Rules.sec(Rules.SWAP_DELAY) },
+            { 'x', "\u00c9change (duel)", "se brise : les balles changent de camp ;\nqui n'en a plus attend " + Rules.sec(Rules.SWAP_DELAY) },
             { 'w', "Bonus / malus", "effet imm\u00e9diat au contact (voir page\n\u00ab Bonus et malus \u00bb)" } };
         int from = page == 0 ? 0 : 10, to = page == 0 ? 10 : all.length;
         int n = to - from, perCol = (n + 1) / 2;
@@ -189,7 +189,14 @@ final class InfoScreen {
             double x = i < perCol ? 30 : 490;
             double y = 112 + (i < perCol ? i : i - perCol) * 88;
             Object[] it = all[from + i];
-            brick(gc, (Character) it[0], x, y, t);
+            if ((Character) it[0] == '2') { // trois briques : 1, 2 et 3 coups, du clair au fonce
+                for (int q = 0; q < 3; q++) {
+                    Brick b = new Brick(0, 0, x + q * 21, y, 18, Game.SOLO_BH, (char) ('1' + q));
+                    Art.brick(gc, b, t);
+                }
+            } else {
+                brick(gc, (Character) it[0], x, y, t);
+            }
             Theme.leftFit(gc, (String) it[1], x + 76, y + 4, Theme.SMALL_BOLD, Theme.WHITE, 360);
             Theme.lines(gc, (String) it[2], x + 76, y + 26, 18, Theme.TINY, Theme.SOFT, 360);
         }

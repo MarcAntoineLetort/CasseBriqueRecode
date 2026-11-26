@@ -48,7 +48,7 @@ final class Game {
     static final double DISC_X = 20, DISC_Y = 545, DISC_W = 190, DISC_H = 38;
     static final double NAV_Y = 596, BACK_X = 20, BACK_W = 130;
     static final int INFO_PAGES = 6;
-    static final int THEMES = 3;                     // 0 = espace (classique), 1 = Mars, 2 = aurore boreale
+    static final int THEMES = 4;                     // 0 = espace (classique), 1 = Mars, 2 = aurore boreale, 3 = ocean alien
 
     // Ecrans reseau (partages avec le rendu)
     static final double NB_X = 300, NB_W = 360, NB_H = 56, NB0_Y = 190, NB1_Y = 270;
@@ -123,6 +123,7 @@ final class Game {
     String netNotice = "";
     double netNoticeTime;
     private double mouseNetY = Double.NaN;
+    double snapAge;                    // invite : temps ecoule depuis la derniere image de l'hote
     double remotePos = Double.NaN;     // hote : derniere position recue de la raquette de l'invite
 
     /** Evenements a transmettre a l'invite (sons, particules, eclairs...). Null hors partie reseau cote hote. */
@@ -464,12 +465,18 @@ final class Game {
 
     private void beginRun(int index) {
         newRecord = false;
-        theme = rnd.nextInt(THEMES); // decor tire au hasard a chaque lancement de partie
+        setTheme(rnd.nextInt(THEMES)); // decor tire au hasard a chaque lancement de partie
         paddles = null; // nouvelle partie : points et balles remis a zero
         loadLevel(index, false);
     }
 
     // ------------------------------------------------------------------ reseau
+
+    /** Change le decor (il determine aussi la teinte des briques normales). */
+    void setTheme(int t) {
+        theme = t;
+        Brick.theme = t;
+    }
 
     /** Hote : lance un duel en reseau (hote = blanc, invite = noir). */
     private void startNetMatch(int index) {
@@ -492,7 +499,7 @@ final class Game {
         mouseNetY = Double.NaN;
         campaign = false;
         newRecord = false;
-        theme = themeIdx;
+        setTheme(themeIdx);
         paddles = null;
         state = State.MENU; // pas de son local : tout vient de l'hote
         loadLevel(index, false);
@@ -551,6 +558,8 @@ final class Game {
             netConnect();
         } else if (key.equals("BACK_SPACE")) {
             if (netScreen == 2 && !netInput.isEmpty()) netInput = netInput.substring(0, netInput.length() - 1);
+        } else if (key.equals("DELETE")) {
+            if (netScreen == 2) netInput = ""; // Suppr : tout effacer
         }
     }
 
@@ -1108,30 +1117,36 @@ final class Game {
         }
         if (state != State.PLAYING && state != State.READY) return;
         if (paddles != null && localIdx < paddles.length) movePaddle(paddles[localIdx], dt);
+        snapAge += dt;
+        boolean predict = snapAge < 0.12; // au-dela, on attend l'hote plutot que de faire traverser les briques aux balles
         for (Ball b : balls) {
             if (b.stuck) {
                 follow(b);
                 continue;
             }
-            b.x += b.dx * b.speed * dt;
-            b.y += b.dy * b.speed * dt;
+            if (predict) {
+                b.x += b.dx * b.speed * dt;
+                b.y += b.dy * b.speed * dt;
+            }
             b.pushTrail();
         }
-        for (PowerUp u : powerUps) {
-            u.x += u.vx * dt;
-            u.y += u.vy * dt;
-            u.t += dt;
+        if (predict) {
+            for (PowerUp u : powerUps) {
+                u.x += u.vx * dt;
+                u.y += u.vy * dt;
+            }
+            for (Ghost g : ghosts) {
+                g.x += g.vx * dt;
+                g.y += g.vy * dt;
+            }
+            for (Star st : stars) {
+                st.x += st.vx * dt;
+                st.y += st.vy * dt;
+            }
         }
-        for (Ghost g : ghosts) {
-            g.x += g.vx * dt;
-            g.y += g.vy * dt;
-            g.t += dt;
-        }
-        for (Star st : stars) {
-            st.x += st.vx * dt;
-            st.y += st.vy * dt;
-            st.t += dt;
-        }
+        for (PowerUp u : powerUps) u.t += dt;
+        for (Ghost g : ghosts) g.t += dt;
+        for (Star st : stars) st.t += dt;
     }
 
     private void updateRainbows(double dt) {
@@ -1167,9 +1182,6 @@ final class Game {
                 p.serveTimer = Rules.SWAP_DELAY;
                 p.serveSecond = (int) Math.ceil(Rules.SWAP_DELAY);
             }
-        }
-        for (Brick k : bricks) {
-            if (k.alive && k.kind == Brick.Kind.SWAP) k.flash = 0.45;
         }
         for (Ball b : balls) spawn(b.x, b.y, 8, b.owner == 0 ? 0 : 250, 160);
         shake = Math.max(shake, 4);
@@ -1493,12 +1505,16 @@ final class Game {
             if (direct && buttonCooldown <= 0) pressButton(k);
             return;
         case SWAP: // echange : les balles noires et blanches changent de camp (duel)
-            spawn(k.x + k.w / 2, k.y + k.h / 2, 5, 0, 140);
-            k.flash = 0.3;
             if (direct && twoPlayer && swapCooldown <= 0) {
                 swapCooldown = Rules.SWAP_COOLDOWN;
                 pendingSwap = true;
+                k.alive = false; // la brique se brise : un seul echange par brique
+                spawn(k.x + k.w / 2, k.y + k.h / 2, 14, 0, 230);
+                spawn(k.x + k.w / 2, k.y + k.h / 2, 8, 250, 160);
+                if (nightTimer > 0) addDeath(new double[] { k.x, k.y, k.w, k.h, 0, 0.5 });
             } else {
+                spawn(k.x + k.w / 2, k.y + k.h / 2, 5, 0, 140);
+                k.flash = 0.3;
                 play(Sfx.STEEL);
             }
             return;
@@ -1672,7 +1688,8 @@ final class Game {
         play(Sfx.TIMEWARP);
         shake = Math.max(shake, 5);
         for (Brick o : bricks) {
-            if (!o.alive && o.kind != Brick.Kind.GOLD && o.kind != Brick.Kind.TIME && o.kind != Brick.Kind.RAINBOW) {
+            if (!o.alive && o.kind != Brick.Kind.GOLD && o.kind != Brick.Kind.TIME && o.kind != Brick.Kind.RAINBOW
+                    && o.kind != Brick.Kind.SWAP) {
                 o.alive = true;
                 o.hp = o.maxHp;
                 o.frost = 0;
